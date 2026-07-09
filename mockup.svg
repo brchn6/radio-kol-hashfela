@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 820" width="420" height="820">
+  <defs>
+    <clipPath id="screen-clip">
+      <rect x="40" y="60" width="340" height="700" rx="12"/>
+    </clipPath>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a3a4a"/>
+      <stop offset="40%" stop-color="#3a7a6a"/>
+      <stop offset="70%" stop-color="#6a9a5a"/>
+      <stop offset="100%" stop-color="#4a7a3a"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="80%" cy="18%" r="25%">
+      <stop offset="0%" stop-color="#f0c050" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#f0c050" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tree-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a5a2a"/>
+      <stop offset="100%" stop-color="#1a4a1a"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="text-shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#000" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+
+  <!-- Phone body -->
+  <rect x="20" y="20" width="380" height="780" rx="32" fill="#222" stroke="#444" stroke-width="3"/>
+  <rect x="28" y="28" width="364" height="764" rx="28" fill="#111"/>
+
+  <!-- Screen -->
+  <g clip-path="url(#screen-clip)">
+    <!-- Background gradient (nature scene) -->
+    <rect x="40" y="60" width="340" height="700" fill="url(#sky)"/>
+
+    <!-- Sun glow -->
+    <circle cx="300" cy="140" r="80" fill="url(#sun)"/>
+
+    <!-- Mountains background -->
+    <polygon points="40,500 120,380 180,440 240,350 320,400 380,300 380,500" fill="#2a5a3a" opacity="0.6"/>
+    <polygon points="40,500 80,420 150,460 200,390 280,430 340,370 380,420 380,500" fill="#3a6a4a" opacity="0.5"/>
+
+    <!-- Forest silhouette -->
+    <polygon points="40,520 55,470 70,520 90,460 105,520 120,480 135,520 155,450 170,520 190,470 205,520 220,460 235,520 250,480 265,520 285,440 300,520 320,470 335,520 350,460 365,520 380,480 380,520" fill="#1a3a1a" opacity="0.7"/>
+
+    <!-- Trees -->
+    <g fill="url(#tree-grad)" opacity="0.5">
+      <rect x="60" y="460" width="8" height="60" rx="2"/>
+      <polygon points="64,420 44,470 84,470"/>
+      <rect x="140" y="440" width="10" height="80" rx="2"/>
+      <polygon points="145,400 120,460 170,460"/>
+      <rect x="230" y="430" width="8" height="90" rx="2"/>
+      <polygon points="234,390 214,450 254,450"/>
+      <rect x="310" y="420" width="9" height="100" rx="2"/>
+      <polygon points="314,380 294,440 334,440"/>
+    </g>
+
+    <!-- Ground -->
+    <rect x="40" y="520" width="340" height="240" fill="#2a4a2a" opacity="0.4"/>
+    <ellipse cx="200" cy="700" rx="250" ry="120" fill="#1a3a1a" opacity="0.3"/>
+
+    <!-- Dim overlay -->
+    <rect x="40" y="60" width="340" height="700" fill="#000" opacity="0.25"/>
+
+    <!-- Title -->
+    <text x="210" y="240" text-anchor="middle" font-family="sans-serif" font-size="26" font-weight="bold" fill="#fff" filter="url(#text-shadow)">Radio Kol Hashfela</text>
+
+    <!-- Status text -->
+    <text x="210" y="285" text-anchor="middle" font-family="sans-serif" font-size="17" fill="#ddd" filter="url(#text-shadow)">Now Playing…</text>
+
+    <!-- Play button -->
+    <rect x="125" y="340" width="170" height="58" rx="29" fill="#fff" opacity="0.92" filter="url(#shadow)"/>
+    <text x="210" y="377" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="bold" fill="#111">STOP</text>
+
+    <!-- Stop icon (square) -->
+    <rect x="173" y="355" width="10" height="10" rx="1" fill="#111"/>
+  </g>
+
+  <!-- Screen border -->
+  <rect x="40" y="60" width="340" height="700" rx="12" fill="none" stroke="#000" stroke-width="1" opacity="0.3"/>
+
+  <!-- Notch -->
+  <rect x="155" y="20" width="110" height="28" rx="14" fill="#111"/>
+  <rect x="175" y="30" width="8" height="8" rx="4" fill="#333"/>
+  <rect x="195" y="30" width="30" height="4" rx="2" fill="#333" opacity="0.5"/>
+
+  <!-- Home indicator -->
+  <rect x="160" y="780" width="100" height="5" rx="2.5" fill="#555"/>
+</svg>

@@ -55,20 +55,9 @@ The APK lands at `build/radio.apk`. Transfer it to your phone
 A random nature photo is fetched when you open the app. The only
 button is **Play / Stop**, right in the center. That's the whole UI.
 
-```
-┌─────────────────────────────┐
-│    [ random nature photo ]  │
-│         (dimmed)            │
-│                             │
-│     Radio Kol Hashfela      │
-│      Now Playing…           │
-│                             │
-│      ┌───────────────┐      │
-│      │     STOP      │      │
-│      └───────────────┘      │
-│                             │
-└─────────────────────────────┘
-```
+<img src="mockup.svg" alt="App mockup" width="320">
+
+<small>*Mockup — the actual photo changes every time you open the app.*</small>
 
 ## Tech details
 
