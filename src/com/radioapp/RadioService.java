@@ -3,6 +3,7 @@ package com.radioapp;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.media.AudioAttributes;
@@ -19,77 +20,99 @@ public class RadioService extends Service {
     private static final int NOTIF_ID = 1001;
     private static final String TAG = "RadioService";
 
+    public static final String ACTION_PLAY = "com.radioapp.PLAY";
+    public static final String ACTION_STOP = "com.radioapp.STOP";
+
     private MediaPlayer mediaPlayer;
 
     @Override
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
-        startForeground(NOTIF_ID, buildNotification("Connecting…"));
+        startForeground(NOTIF_ID, buildNotification("Connecting…", true));
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
 
-        if ("STOP".equals(action)) {
-            stopSelf();
+        if (ACTION_STOP.equals(action)) {
+            stopPlayback();
+            updateNotification("Stopped", false);
             return START_NOT_STICKY;
         }
 
-        if (mediaPlayer == null) {
-            mediaPlayer = new MediaPlayer();
-            mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .build());
-
-            try {
-                mediaPlayer.setDataSource(getString(R.string.radio_url));
-                mediaPlayer.prepareAsync();
-
-                mediaPlayer.setOnPreparedListener(mp -> {
-                    mp.start();
-                    updateNotification("Now Playing");
-                });
-
-                mediaPlayer.setOnErrorListener((mp, what, extra) -> {
-                    Log.e(TAG, "MediaPlayer error: what=" + what + " extra=" + extra);
-                    updateNotification("Error playing");
-                    return true; // don't call OnCompletionListener
-                });
-
-                mediaPlayer.setOnInfoListener((mp, what, extra) -> {
-                    if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
-                        updateNotification("Buffering…");
-                    } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
-                        updateNotification("Now Playing");
-                    }
-                    return false;
-                });
-
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to set data source", e);
-                updateNotification("Error: " + e.getMessage());
-            }
-        }
-
+        startPlayback();
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
-        if (mediaPlayer != null) {
-            if (mediaPlayer.isPlaying()) mediaPlayer.stop();
-            mediaPlayer.release();
-            mediaPlayer = null;
-        }
+        stopPlayback();
         super.onDestroy();
     }
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private void startPlayback() {
+        if (mediaPlayer != null) {
+            updateNotification("Now Playing", true);
+            return;
+        }
+
+        updateNotification("Connecting…", true);
+
+        mediaPlayer = new MediaPlayer();
+        mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .build());
+
+        try {
+            mediaPlayer.setDataSource(getString(R.string.radio_url));
+            mediaPlayer.prepareAsync();
+
+            mediaPlayer.setOnPreparedListener(mp -> {
+                mp.start();
+                updateNotification("Now Playing", true);
+            });
+
+            mediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                Log.e(TAG, "MediaPlayer error: what=" + what + " extra=" + extra);
+                stopPlayback();
+                updateNotification("Error playing", false);
+                return true; // don't call OnCompletionListener
+            });
+
+            mediaPlayer.setOnInfoListener((mp, what, extra) -> {
+                if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
+                    updateNotification("Buffering…", true);
+                } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
+                    updateNotification("Now Playing", true);
+                }
+                return false;
+            });
+
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to set data source", e);
+            stopPlayback();
+            updateNotification("Error: " + e.getMessage(), false);
+        }
+    }
+
+    private void stopPlayback() {
+        if (mediaPlayer != null) {
+            try {
+                if (mediaPlayer.isPlaying()) mediaPlayer.stop();
+            } catch (IllegalStateException ignored) {
+                // Player may already be stopped after an error.
+            }
+            mediaPlayer.release();
+            mediaPlayer = null;
+        }
     }
 
     // --- Notification helpers ---
@@ -106,19 +129,43 @@ public class RadioService extends Service {
         nm.createNotificationChannel(channel);
     }
 
-    private Notification buildNotification(String status) {
-        // Build a simple ongoing notification
+    private Notification buildNotification(String status, boolean showStopAction) {
+        Intent openIntent = new Intent(this, MainActivity.class);
+        PendingIntent openPendingIntent = PendingIntent.getActivity(
+                this, 0, openIntent, pendingIntentFlags());
+
+        Intent actionIntent = new Intent(this, RadioService.class);
+        actionIntent.setAction(showStopAction ? ACTION_STOP : ACTION_PLAY);
+        PendingIntent actionPendingIntent = PendingIntent.getService(
+                this, showStopAction ? 1 : 2, actionIntent, pendingIntentFlags());
+
+        String actionLabel = showStopAction ? getString(R.string.stop) : getString(R.string.play);
+        int actionIcon = showStopAction
+                ? android.R.drawable.ic_media_pause
+                : android.R.drawable.ic_media_play;
+
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Kol Hashfela")
+                .setContentTitle("Kol Hashfela 103.6FM")
                 .setContentText(status)
                 .setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentIntent(openPendingIntent)
+                .addAction(actionIcon, actionLabel, actionPendingIntent)
+                .setStyle(new Notification.MediaStyle().setShowActionsInCompactView(0))
                 .setOngoing(true)
                 .setShowWhen(false)
                 .build();
     }
 
-    private void updateNotification(String status) {
+    private int pendingIntentFlags() {
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        return flags;
+    }
+
+    private void updateNotification(String status, boolean showStopAction) {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.notify(NOTIF_ID, buildNotification(status));
+        nm.notify(NOTIF_ID, buildNotification(status, showStopAction));
     }
 }

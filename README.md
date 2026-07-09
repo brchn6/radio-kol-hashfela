@@ -59,12 +59,17 @@ The APK lands at `build/radio.apk`. Transfer it to your phone
 
 ## What it looks like
 
-A random nature photo is fetched when you open the app. The only
-button is **Play / Stop**, right in the center. That's the whole UI.
+A random nature photo from Israel's Hashfela/Shfela area is fetched
+when you open the app. The main button is **Play / Stop**, right in
+the center, with a quick WhatsApp button for sending love to the station.
 
 <img src="mockup.svg" alt="App mockup" width="320">
 
 <small>*Mockup — the actual photo changes every time you open the app.*</small>
+
+Background photos are loaded from Wikimedia Commons and feature places
+around the Shfela such as Tel Azeka, Adullam-France Park, Britannia Park,
+the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 
 ## Tech details
 

@@ -5,4 +5,7 @@
     <string name="radio_name">Radio Kol Hashfela</string>
     <string name="play">Play</string>
     <string name="stop">Stop</string>
+    <string name="whatsapp_button">WhatsApp 103.6FM</string>
+    <string name="whatsapp_phone">972585851036</string>
+    <string name="whatsapp_message">שיר מעולה, אתם הכי טובים!</string>
 </resources>

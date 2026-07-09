@@ -1,11 +1,14 @@
 package com.radioapp;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -19,8 +22,20 @@ import android.widget.TextView;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Random;
 
 public class MainActivity extends Activity {
+
+    private static final String[] HASHFELA_BACKGROUND_URLS = {
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/TEL_AZEKA_A.jpg/1280px-TEL_AZEKA_A.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Adullam-France_Park.jpg/1280px-Adullam-France_Park.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Pristine_wilderness_in_Adullam-France_Park.jpg/1280px-Pristine_wilderness_in_Adullam-France_Park.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Park_Britannia_DSC_1202_%288411816956%29.jpg/1280px-Park_Britannia_DSC_1202_%288411816956%29.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/The_Elah_valley.jpg/1280px-The_Elah_valley.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Valley_of_Elah.jpg/1280px-Valley_of_Elah.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Israel_Beit_Guvrin_P1050959.JPG/1280px-Israel_Beit_Guvrin_P1050959.JPG",
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/135175_eshtaol_forest_observation_PikiWiki_Israel.jpg/1280px-135175_eshtaol_forest_observation_PikiWiki_Israel.jpg"
+    };
 
     private Button toggleButton;
     private TextView statusText;
@@ -65,6 +80,16 @@ public class MainActivity extends Activity {
         toggleButton.setAllCaps(false);
         toggleButton.setOnClickListener(v -> togglePlayback());
 
+        // ─── WhatsApp Button ────────────────────────────────────────
+        Button whatsappButton = new Button(this, null, android.R.attr.buttonStyle);
+        whatsappButton.setText(getString(R.string.whatsapp_button));
+        whatsappButton.setTextSize(16);
+        whatsappButton.setPadding(42, 14, 42, 14);
+        whatsappButton.setBackgroundColor(Color.argb(190, 37, 211, 102));
+        whatsappButton.setTextColor(Color.WHITE);
+        whatsappButton.setAllCaps(false);
+        whatsappButton.setOnClickListener(v -> openWhatsApp());
+
         // ─── Overlay: title + status + button, stacked vertically ───
         LinearLayout overlay = new LinearLayout(this);
         overlay.setOrientation(LinearLayout.VERTICAL);
@@ -72,6 +97,12 @@ public class MainActivity extends Activity {
         overlay.addView(title);
         overlay.addView(statusText);
         overlay.addView(toggleButton);
+
+        LinearLayout.LayoutParams whatsappParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        whatsappParams.topMargin = 28;
+        overlay.addView(whatsappButton, whatsappParams);
 
         // ─── Root: FrameLayout stacks image under overlay ───────────
         FrameLayout root = new FrameLayout(this);
@@ -84,14 +115,15 @@ public class MainActivity extends Activity {
                 Gravity.CENTER));
         setContentView(root);
 
-        // ─── Fetch a random nature photo in the background ──────────
+        // ─── Fetch a random Hashfela nature photo in the background ─
         new Thread(() -> {
-            Bitmap bmp = downloadImage(
-                    "https://picsum.photos/1080/1920");
+            Bitmap bmp = downloadImage(randomHashfelaBackgroundUrl());
             if (bmp != null) {
                 runOnUiThread(() -> backgroundImage.setImageBitmap(bmp));
             }
         }).start();
+
+        requestNotificationPermission();
 
         // ─── Auto-start playback ────────────────────────────────────
         togglePlayback();
@@ -100,21 +132,52 @@ public class MainActivity extends Activity {
     // ─── Toggle play / stop ────────────────────────────────────────────
     private void togglePlayback() {
         if (isPlaying) {
-            stopService(new Intent(this, RadioService.class));
+            startRadioService(RadioService.ACTION_STOP);
             toggleButton.setText(getString(R.string.play));
             statusText.setText("Stopped");
             isPlaying = false;
         } else {
-            Intent intent = new Intent(this, RadioService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent);
-            } else {
-                startService(intent);
-            }
+            startRadioService(RadioService.ACTION_PLAY);
             toggleButton.setText(getString(R.string.stop));
             statusText.setText("Now Playing…");
             isPlaying = true;
         }
+    }
+
+    private void startRadioService(String action) {
+        Intent intent = new Intent(this, RadioService.class);
+        intent.setAction(action);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1036);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 1036 && isPlaying) {
+            startRadioService(RadioService.ACTION_PLAY);
+        }
+    }
+
+    private void openWhatsApp() {
+        String url = "https://wa.me/" + getString(R.string.whatsapp_phone)
+                + "?text=" + Uri.encode(getString(R.string.whatsapp_message));
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+    }
+
+    private String randomHashfelaBackgroundUrl() {
+        return HASHFELA_BACKGROUND_URLS[new Random().nextInt(HASHFELA_BACKGROUND_URLS.length)];
     }
 
     // ─── Download an image from a URL ─────────────────────────────────
@@ -124,6 +187,7 @@ public class MainActivity extends Activity {
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(8000);
             conn.setReadTimeout(8000);
+            conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
             conn.connect();
             if (conn.getResponseCode() == 200) {
                 InputStream is = conn.getInputStream();
