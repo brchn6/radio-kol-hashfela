@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Radio Kol Hashfela logo" width="120">
+</p>
+
 # 📻 Radio Kol Hashfela — 103.6FM
 
 A **minimal, zero-permission-grabbing** Android app that streams
