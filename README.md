@@ -4,6 +4,9 @@
 
 # 📻 Radio Kol Hashfela — 103.6FM
 
+> ⚠️ **Unofficial.** I'm just a listener who loves this station.
+> Not affiliated with Radio Kol Hashfela or 103.6FM.
+
 A **minimal, zero-permission-grabbing** Android app that streams
 [Radio Kol Hashfela 103.6FM](https://radio.streamgates.net/stream/1036kh)
 (רדיו קול השפלה 103.6FM) — straight from the source, no ads,
