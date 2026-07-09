@@ -1,9 +1,9 @@
-# 📻 Radio Kol Hashfela
+# 📻 Radio Kol Hashfela — 103.6FM
 
 A **minimal, zero-permission-grabbing** Android app that streams
-[Radio Kol Hashfela](https://radio.streamgates.net/stream/1036kh)
-(קול השפלה) — straight from the source, no ads, no trackers,
-no nonsense.
+[Radio Kol Hashfela 103.6FM](https://radio.streamgates.net/stream/1036kh)
+(רדיו קול השפלה 103.6FM) — straight from the source, no ads,
+no trackers, no nonsense.
 
 ## What makes this different
 
