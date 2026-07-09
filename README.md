@@ -41,8 +41,9 @@ a pre-filled Hebrew compliment.
 ### Option 1 — Download the APK (easiest)
 
 Go to the **Releases** tab on GitHub (or [click here][releases])
-and grab the latest `.apk` file. Transfer it to your phone however
-you like, then:
+and grab the latest `.apk` file. A fresh **Latest APK** release is
+published automatically after every push to `main`. Transfer it to your
+phone however you like, then:
 
 1. Open the downloaded `.apk` file on your phone
 2. If prompted, allow installation from **"unknown sources"**
@@ -100,4 +101,4 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 
 Do whatever you want. This is for the love of radio.
 
-[releases]: https://github.com/brchn6/radio-kol-hashfela/releases
+[releases]: https://github.com/brchn6/radio-kol-hashfela/releases/latest

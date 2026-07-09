@@ -1,0 +1,48 @@
+name: Build and publish latest APK
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release-latest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build APK
+        run: ./build.sh
+
+      - name: Publish rolling latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="latest"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          git tag -f "$TAG" "$GITHUB_SHA"
+          git push -f origin "$TAG"
+
+          gh release create "$TAG" build/radio.apk \
+            --title "Latest APK" \
+            --notes "Automatically built from main commit ${SHORT_SHA}." \
+            --latest
