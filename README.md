@@ -9,21 +9,32 @@
 
 A **minimal, zero-permission-grabbing** Android app that streams
 [Radio Kol Hashfela 103.6FM](https://radio.streamgates.net/stream/1036kh)
-(רדיו קול השפלה 103.6FM) — straight from the source, no ads,
+(רדיו קול השפלה 103.6FM) — straight from the source, with no ads,
 no trackers, no nonsense.
+
+It now includes notification-area Play/Stop controls, Shfela-region
+nature backgrounds, and a quick WhatsApp button for sending the station
+a pre-filled Hebrew compliment.
 
 ## What makes this different
 
 - **No ads.** The stream plays directly — no browser, no pop-ups,
   no "skip this video" nonsense.
 - **No creepy permissions.** Internet access (to play the stream)
-  and a notification (so it can keep playing in the background).
+  and notification/foreground-service access (so it can keep playing
+  in the background and show Play/Stop controls).
   That's it. No camera, no mic, no contacts, no location, no
   storage, no phone state.
+- **Notification controls.** Stop or restart playback from the phone's
+  notification shade / top area without reopening the app.
+- **Shfela scenery.** The background image is randomly chosen from
+  nature photos around the Hashfela/Shfela region.
+- **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
+  number with the message: `שיר מעולה, אתם הכי טובים!`
 - **No Google Play Services.** Not even a dependency. This app
   doesn't track you, doesn't phone home, doesn't ask who you are.
-- **Open source.** Every line of code is right here. It's ~200 lines
-  of Java. Build it yourself in 10 seconds.
+- **Open source.** Every line of code is right here. Build it yourself
+  in 10 seconds.
 
 ## How to get it on your phone
 
@@ -77,6 +88,10 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 - **AAC+ stream** at 64 kbps, served directly by the station
 - **Foreground service** — keeps playing when the screen is off
   or you're using other apps
+- **Media-style notification** — compact Play/Stop action in the
+  notification shade
+- **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
+  Hebrew message
 - **~20 KB APK** — smaller than most favicons
 - Built with `aapt2` + `javac` + `d8` + `apksigner` — no Gradle,
   no IDE, no external libraries
