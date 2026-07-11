@@ -3,6 +3,7 @@ build/
 *.apk
 *.idsig
 *.keystore
+!radio.keystore
 
 # IDE
 *.iml
