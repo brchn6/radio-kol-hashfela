@@ -73,7 +73,7 @@ public class MainActivity extends Activity {
         toggleButton = new Button(this, null, android.R.attr.buttonStyle);
         toggleButton.setText("\u25B6");  // ▶ play triangle
         toggleButton.setTextSize(36);
-        toggleButton.setTypeface(null, Typeface.DEFAULT);
+        toggleButton.setTypeface(Typeface.DEFAULT);
         toggleButton.setTextColor(Color.BLACK);
         toggleButton.setAllCaps(false);
 
@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
         Button whatsappButton = new Button(this, null, android.R.attr.buttonStyle);
         whatsappButton.setText("\uD83D\uDCAC  WhatsApp");
         whatsappButton.setTextSize(15);
-        whatsappButton.setTypeface(null, Typeface.DEFAULT);
+        whatsappButton.setTypeface(Typeface.DEFAULT);
         whatsappButton.setTextColor(Color.WHITE);
         whatsappButton.setAllCaps(false);
 
