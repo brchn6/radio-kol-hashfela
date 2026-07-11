@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -16,7 +17,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.io.InputStream;
@@ -48,7 +48,7 @@ public class MainActivity extends Activity {
         // ─── Background ImageView ────────────────────────────────────
         ImageView backgroundImage = new ImageView(this);
         backgroundImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backgroundImage.setColorFilter(Color.argb(100, 0, 0, 0)); // dim overlay
+        backgroundImage.setColorFilter(Color.argb(100, 0, 0, 0));
 
         // ─── Title ───────────────────────────────────────────────────
         TextView title = new TextView(this);
@@ -58,64 +58,104 @@ public class MainActivity extends Activity {
         title.setTextColor(Color.WHITE);
         title.setShadowLayer(8, 0, 2, Color.BLACK);
         title.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        title.setPadding(24, 0, 24, 12);
+        title.setPadding(24, 0, 24, 8);
 
         // ─── Status ──────────────────────────────────────────────────
         statusText = new TextView(this);
-        statusText.setText("Loading…");
-        statusText.setTextSize(18);
+        statusText.setText("Loading\u2026");
+        statusText.setTextSize(16);
         statusText.setTextColor(Color.argb(220, 255, 255, 255));
         statusText.setShadowLayer(6, 0, 2, Color.BLACK);
         statusText.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        statusText.setPadding(24, 0, 24, 40);
+        statusText.setPadding(24, 0, 24, 48);
 
-        // ─── Play / Stop Button ─────────────────────────────────────
+        // ─── Circular Play / Pause Button ────────────────────────────
         toggleButton = new Button(this, null, android.R.attr.buttonStyle);
-        toggleButton.setText(getString(R.string.play));
-        toggleButton.setTextSize(22);
-        toggleButton.setTypeface(null, Typeface.BOLD);
-        toggleButton.setPadding(72, 20, 72, 20);
-        toggleButton.setBackgroundColor(Color.argb(210, 255, 255, 255));
+        toggleButton.setText("\u25B6");  // ▶ play triangle
+        toggleButton.setTextSize(36);
+        toggleButton.setTypeface(null, Typeface.DEFAULT);
         toggleButton.setTextColor(Color.BLACK);
         toggleButton.setAllCaps(false);
+
+        // Make it a circle
+        int btnSize = dpToPx(76);
+        GradientDrawable circleBg = new GradientDrawable();
+        circleBg.setShape(GradientDrawable.OVAL);
+        circleBg.setSize(btnSize, btnSize);
+        circleBg.setColor(Color.argb(220, 255, 255, 255));
+        toggleButton.setBackground(circleBg);
+        toggleButton.setMinWidth(btnSize);
+        toggleButton.setMinHeight(btnSize);
+        toggleButton.setPadding(0, 0, 0, 0);
         toggleButton.setOnClickListener(v -> togglePlayback());
 
-        // ─── WhatsApp Button ────────────────────────────────────────
+        // ─── Center column: title + status + play button ─────────────
+        FrameLayout centerColumn = new FrameLayout(this);
+        centerColumn.setForegroundGravity(Gravity.CENTER);
+
+        // Title at top of center area
+        FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        titleParams.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
+        titleParams.topMargin = dpToPx(32);
+        centerColumn.addView(title, titleParams);
+
+        // Status below title
+        FrameLayout.LayoutParams statusParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        statusParams.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
+        statusParams.topMargin = dpToPx(84);
+        centerColumn.addView(statusText, statusParams);
+
+        // Play button centered
+        FrameLayout.LayoutParams playParams = new FrameLayout.LayoutParams(
+                btnSize, btnSize);
+        playParams.gravity = Gravity.CENTER;
+        centerColumn.addView(toggleButton, playParams);
+
+        // ─── WhatsApp Button — bottom-left ───────────────────────────
         Button whatsappButton = new Button(this, null, android.R.attr.buttonStyle);
-        whatsappButton.setText(getString(R.string.whatsapp_button));
-        whatsappButton.setTextSize(16);
-        whatsappButton.setPadding(42, 14, 42, 14);
-        whatsappButton.setBackgroundColor(Color.argb(190, 37, 211, 102));
+        whatsappButton.setText("\uD83D\uDCAC  WhatsApp");
+        whatsappButton.setTextSize(15);
+        whatsappButton.setTypeface(null, Typeface.DEFAULT);
         whatsappButton.setTextColor(Color.WHITE);
         whatsappButton.setAllCaps(false);
+
+        GradientDrawable waBg = new GradientDrawable();
+        waBg.setShape(GradientDrawable.RECTANGLE);
+        waBg.setCornerRadius(dpToPx(24));
+        waBg.setColor(Color.parseColor("#25D366"));
+        whatsappButton.setBackground(waBg);
+        whatsappButton.setPadding(dpToPx(20), dpToPx(12), dpToPx(24), dpToPx(12));
         whatsappButton.setOnClickListener(v -> openWhatsApp());
 
-        // ─── Overlay: title + status + button, stacked vertically ───
-        LinearLayout overlay = new LinearLayout(this);
-        overlay.setOrientation(LinearLayout.VERTICAL);
-        overlay.setGravity(Gravity.CENTER_HORIZONTAL);
-        overlay.addView(title);
-        overlay.addView(statusText);
-        overlay.addView(toggleButton);
+        FrameLayout.LayoutParams waParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        waParams.gravity = Gravity.BOTTOM | Gravity.START;
+        waParams.setMargins(dpToPx(20), 0, 0, dpToPx(40));
+        whatsappButton.setLayoutParams(waParams);
 
-        LinearLayout.LayoutParams whatsappParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        whatsappParams.topMargin = 28;
-        overlay.addView(whatsappButton, whatsappParams);
-
-        // ─── Root: FrameLayout stacks image under overlay ───────────
+        // ─── Root: FrameLayout stacks everything ─────────────────────
         FrameLayout root = new FrameLayout(this);
         root.addView(backgroundImage, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
-        root.addView(overlay, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER));
+
+        // Center column layered on top
+        FrameLayout.LayoutParams centerParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT);
+        root.addView(centerColumn, centerParams);
+
+        // WhatsApp layered on top
+        root.addView(whatsappButton, waParams);
+
         setContentView(root);
 
-        // ─── Fetch a random Hashfela nature photo in the background ─
+        // ─── Fetch a random Hashfela nature photo in the background ──
         new Thread(() -> {
             Bitmap bmp = downloadImage(randomHashfelaBackgroundUrl());
             if (bmp != null) {
@@ -125,21 +165,21 @@ public class MainActivity extends Activity {
 
         requestNotificationPermission();
 
-        // ─── Auto-start playback ────────────────────────────────────
+        // ─── Auto-start playback ─────────────────────────────────────
         togglePlayback();
     }
 
-    // ─── Toggle play / stop ────────────────────────────────────────────
+    // ─── Toggle play / stop ────────────────────────────────────────────────
     private void togglePlayback() {
         if (isPlaying) {
             startRadioService(RadioService.ACTION_STOP);
-            toggleButton.setText(getString(R.string.play));
+            toggleButton.setText("\u25B6");   // ▶
             statusText.setText("Stopped");
             isPlaying = false;
         } else {
             startRadioService(RadioService.ACTION_PLAY);
-            toggleButton.setText(getString(R.string.stop));
-            statusText.setText("Now Playing…");
+            toggleButton.setText("\u23F8");   // ⏸
+            statusText.setText("Now Playing\u2026");
             isPlaying = true;
         }
     }
@@ -180,7 +220,7 @@ public class MainActivity extends Activity {
         return HASHFELA_BACKGROUND_URLS[new Random().nextInt(HASHFELA_BACKGROUND_URLS.length)];
     }
 
-    // ─── Download an image from a URL ─────────────────────────────────
+    // ─── Download an image from a URL ─────────────────────────────────────
     private Bitmap downloadImage(String urlString) {
         try {
             URL url = new URL(urlString);
@@ -199,5 +239,11 @@ public class MainActivity extends Activity {
             // fall through — background stays dimmed black, looks fine
         }
         return null;
+    }
+
+    // ─── Density-independent pixel helper ─────────────────────────────────
+    private int dpToPx(int dp) {
+        float density = getResources().getDisplayMetrics().density;
+        return Math.round(dp * density);
     }
 }
