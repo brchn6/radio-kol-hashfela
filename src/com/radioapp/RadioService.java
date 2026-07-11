@@ -8,6 +8,8 @@ import android.app.Service;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
@@ -24,12 +26,14 @@ public class RadioService extends Service {
     public static final String ACTION_STOP = "com.radioapp.STOP";
 
     private MediaPlayer mediaPlayer;
+    private MediaSession mediaSession;
 
     @Override
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
-        startForeground(NOTIF_ID, buildNotification("Connecting…", true));
+        createMediaSession();
+        startForeground(NOTIF_ID, buildNotification("Connecting\u2026", true));
     }
 
     @Override
@@ -48,6 +52,11 @@ public class RadioService extends Service {
 
     @Override
     public void onDestroy() {
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
         stopPlayback();
         super.onDestroy();
     }
@@ -57,13 +66,58 @@ public class RadioService extends Service {
         return null;
     }
 
+    // ─── MediaSession ─────────────────────────────────────────────────────
+
+    private void createMediaSession() {
+        mediaSession = new MediaSession(this, "RadioKolHashfela");
+        mediaSession.setFlags(
+                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
+                        | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setCallback(new MediaSession.Callback() {
+            @Override
+            public void onPlay() {
+                startPlayback();
+            }
+
+            @Override
+            public void onPause() {
+                stopPlayback();
+                updateNotification("Stopped", false);
+            }
+
+            @Override
+            public void onStop() {
+                stopPlayback();
+                updateNotification("Stopped", false);
+            }
+        });
+        mediaSession.setActive(true);
+        updatePlaybackState(false);
+    }
+
+    private void updatePlaybackState(boolean playing) {
+        if (mediaSession == null) return;
+        int state = playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
+        long actions = PlaybackState.ACTION_PLAY
+                | PlaybackState.ACTION_PAUSE
+                | PlaybackState.ACTION_STOP;
+        PlaybackState playbackState = new PlaybackState.Builder()
+                .setActions(actions)
+                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? 1.0f : 0f)
+                .build();
+        mediaSession.setPlaybackState(playbackState);
+    }
+
+    // ─── MediaPlayer ──────────────────────────────────────────────────────
+
     private void startPlayback() {
         if (mediaPlayer != null) {
             updateNotification("Now Playing", true);
+            updatePlaybackState(true);
             return;
         }
 
-        updateNotification("Connecting…", true);
+        updateNotification("Connecting\u2026", true);
 
         mediaPlayer = new MediaPlayer();
         mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
@@ -78,18 +132,20 @@ public class RadioService extends Service {
             mediaPlayer.setOnPreparedListener(mp -> {
                 mp.start();
                 updateNotification("Now Playing", true);
+                updatePlaybackState(true);
             });
 
             mediaPlayer.setOnErrorListener((mp, what, extra) -> {
                 Log.e(TAG, "MediaPlayer error: what=" + what + " extra=" + extra);
                 stopPlayback();
                 updateNotification("Error playing", false);
-                return true; // don't call OnCompletionListener
+                updatePlaybackState(false);
+                return true;
             });
 
             mediaPlayer.setOnInfoListener((mp, what, extra) -> {
                 if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
-                    updateNotification("Buffering…", true);
+                    updateNotification("Buffering\u2026", true);
                 } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
                     updateNotification("Now Playing", true);
                 }
@@ -100,6 +156,7 @@ public class RadioService extends Service {
             Log.e(TAG, "Failed to set data source", e);
             stopPlayback();
             updateNotification("Error: " + e.getMessage(), false);
+            updatePlaybackState(false);
         }
     }
 
@@ -113,9 +170,10 @@ public class RadioService extends Service {
             mediaPlayer.release();
             mediaPlayer = null;
         }
+        updatePlaybackState(false);
     }
 
-    // --- Notification helpers ---
+    // ─── Notification helpers ─────────────────────────────────────────────
 
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
@@ -144,13 +202,19 @@ public class RadioService extends Service {
                 ? android.R.drawable.ic_media_pause
                 : android.R.drawable.ic_media_play;
 
+        Notification.MediaStyle mediaStyle = new Notification.MediaStyle()
+                .setShowActionsInCompactView(0);
+        if (mediaSession != null) {
+            mediaStyle.setMediaSession(mediaSession.getSessionToken());
+        }
+
         return new Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle("Kol Hashfela 103.6FM")
                 .setContentText(status)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentIntent(openPendingIntent)
                 .addAction(actionIcon, actionLabel, actionPendingIntent)
-                .setStyle(new Notification.MediaStyle().setShowActionsInCompactView(0))
+                .setStyle(mediaStyle)
                 .setOngoing(true)
                 .setShowWhen(false)
                 .build();
