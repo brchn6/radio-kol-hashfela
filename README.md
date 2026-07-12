@@ -7,10 +7,13 @@
 > ⚠️ **Unofficial.** I'm just a listener who loves this station.
 > Not affiliated with Radio Kol Hashfela or 103.6FM.
 
-A **minimal, zero-permission-grabbing** Android app that streams
+A **minimal, zero-permission-grabbing** mobile app that streams
 [Radio Kol Hashfela 103.6FM](https://radio.streamgates.net/stream/1036kh)
 (רדיו קול השפלה 103.6FM) — straight from the source, with no ads,
 no trackers, no nonsense.
+
+The repo contains the original Android app plus a matching iPhone/iOS
+SwiftUI app under `ios/`.
 
 It now includes notification-area Play/Stop controls, Shfela-region
 nature backgrounds, and a quick WhatsApp button for sending the station
@@ -38,7 +41,7 @@ a pre-filled Hebrew compliment.
 
 ## How to get it on your phone
 
-### Option 1 — Download the APK (easiest)
+### Android option 1 — Download the APK (easiest)
 
 Go to the **Releases** tab on GitHub (or [click here][releases])
 and grab the latest `.apk` file. A fresh **Latest APK** release is
@@ -52,7 +55,7 @@ phone however you like, then:
 3. Tap **Install**
 4. Open the app — the radio starts playing automatically
 
-### Option 2 — Build it yourself
+### Android option 2 — Build it yourself
 
 You only need:
 - Linux / macOS / WSL
@@ -68,6 +71,22 @@ cd radio-kol-hashfela
 
 The APK lands at `build/radio.apk`. Transfer it to your phone
 (ADB, USB, KDE Connect, email yourself — whatever works).
+
+### iPhone / iOS build
+
+The iOS app lives in `ios/RadioKolHashfela.xcodeproj` and uses SwiftUI,
+AVPlayer, background audio, Control Center / lock-screen media controls,
+Shfela background photos, and the same WhatsApp shortcut.
+
+Build it on macOS with Xcode:
+
+```bash
+cd ios
+./build-ios.sh
+```
+
+For installing on a real iPhone, open `ios/RadioKolHashfela.xcodeproj`
+in Xcode and choose your Apple development team for signing.
 
 ## What it looks like
 
@@ -85,17 +104,21 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 
 ## Tech details
 
-- **API 26+** (Android 8.0+) — covers ~99% of active devices
+- **Android API 26+** (Android 8.0+) — covers ~99% of active devices
+- **iOS 15+** SwiftUI app in `ios/`
 - **AAC+ stream** at 64 kbps, served directly by the station
-- **Foreground service** — keeps playing when the screen is off
+- **Android foreground service** — keeps playing when the screen is off
   or you're using other apps
-- **Media-style notification** — compact Play/Stop action in the
+- **Android media-style notification** — compact Play/Stop action in the
   notification shade
+- **iOS background audio + Now Playing controls** — supports Control Center,
+  lock screen, and headset controls
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
-- **~20 KB APK** — smaller than most favicons
-- Built with `aapt2` + `javac` + `d8` + `apksigner` — no Gradle,
+- **~24 KB Android APK** — smaller than most favicons
+- Android built with `aapt2` + `javac` + `d8` + `apksigner` — no Gradle,
   no IDE, no external libraries
+- iOS builds with Xcode / `xcodebuild`
 
 ## License
 
