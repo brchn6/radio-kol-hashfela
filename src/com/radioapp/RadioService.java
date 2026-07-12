@@ -25,8 +25,12 @@ public class RadioService extends Service {
     public static final String ACTION_PLAY = "com.radioapp.PLAY";
     public static final String ACTION_STOP = "com.radioapp.STOP";
 
+    private final Object playerLock = new Object();
+
     private MediaPlayer mediaPlayer;
     private MediaSession mediaSession;
+    private boolean isPreparing = false;
+    private boolean isPlaying = false;
 
     @Override
     public void onCreate() {
@@ -111,66 +115,121 @@ public class RadioService extends Service {
     // ─── MediaPlayer ──────────────────────────────────────────────────────
 
     private void startPlayback() {
-        if (mediaPlayer != null) {
-            updateNotification("Now Playing", true);
-            updatePlaybackState(true);
-            return;
+        MediaPlayer player;
+
+        synchronized (playerLock) {
+            if (mediaPlayer != null) {
+                updateNotification(isPlaying ? "Now Playing" : "Connecting\u2026", true);
+                updatePlaybackState(isPlaying);
+                return;
+            }
+
+            player = new MediaPlayer();
+            mediaPlayer = player;
+            isPreparing = true;
+            isPlaying = false;
         }
 
         updateNotification("Connecting\u2026", true);
+        updatePlaybackState(false);
 
-        mediaPlayer = new MediaPlayer();
-        mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
+        player.setAudioAttributes(new AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .build());
 
-        try {
-            mediaPlayer.setDataSource(getString(R.string.radio_url));
-            mediaPlayer.prepareAsync();
+        player.setOnPreparedListener(mp -> {
+            boolean started = false;
+            boolean stalePlayer = false;
+            synchronized (playerLock) {
+                if (mp != mediaPlayer) {
+                    stalePlayer = true;
+                } else {
+                    isPreparing = false;
+                    try {
+                        mp.start();
+                        isPlaying = true;
+                        started = true;
+                    } catch (IllegalStateException e) {
+                        Log.e(TAG, "Failed to start prepared player", e);
+                        mediaPlayer = null;
+                        isPreparing = false;
+                        isPlaying = false;
+                    }
+                }
+            }
 
-            mediaPlayer.setOnPreparedListener(mp -> {
-                mp.start();
-                updateNotification("Now Playing", true);
-                updatePlaybackState(true);
-            });
-
-            mediaPlayer.setOnErrorListener((mp, what, extra) -> {
-                Log.e(TAG, "MediaPlayer error: what=" + what + " extra=" + extra);
-                stopPlayback();
+            if (stalePlayer) {
+                safeRelease(mp);
+                return;
+            }
+            if (!started) {
+                safeRelease(mp);
                 updateNotification("Error playing", false);
                 updatePlaybackState(false);
-                return true;
-            });
+                return;
+            }
 
-            mediaPlayer.setOnInfoListener((mp, what, extra) -> {
-                if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
-                    updateNotification("Buffering\u2026", true);
-                } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
-                    updateNotification("Now Playing", true);
-                }
-                return false;
-            });
+            updateNotification("Now Playing", true);
+            updatePlaybackState(true);
+        });
 
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to set data source", e);
+        player.setOnErrorListener((mp, what, extra) -> {
+            synchronized (playerLock) {
+                if (mp != mediaPlayer) return true;
+            }
+            Log.e(TAG, "MediaPlayer error: what=" + what + " extra=" + extra);
+            stopPlayback();
+            updateNotification("Error playing", false);
+            return true;
+        });
+
+        player.setOnInfoListener((mp, what, extra) -> {
+            synchronized (playerLock) {
+                if (mp != mediaPlayer) return true;
+            }
+            if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
+                updateNotification("Buffering\u2026", true);
+            } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
+                updateNotification("Now Playing", true);
+            }
+            return false;
+        });
+
+        try {
+            player.setDataSource(getString(R.string.radio_url));
+            player.prepareAsync();
+        } catch (IOException | IllegalStateException e) {
+            Log.e(TAG, "Failed to prepare stream", e);
             stopPlayback();
             updateNotification("Error: " + e.getMessage(), false);
-            updatePlaybackState(false);
         }
     }
 
     private void stopPlayback() {
-        if (mediaPlayer != null) {
-            try {
-                if (mediaPlayer.isPlaying()) mediaPlayer.stop();
-            } catch (IllegalStateException ignored) {
-                // Player may already be stopped after an error.
-            }
-            mediaPlayer.release();
+        MediaPlayer playerToRelease;
+        synchronized (playerLock) {
+            playerToRelease = mediaPlayer;
             mediaPlayer = null;
+            isPreparing = false;
+            isPlaying = false;
         }
+
+        safeRelease(playerToRelease);
         updatePlaybackState(false);
+    }
+
+    private void safeRelease(MediaPlayer player) {
+        if (player == null) return;
+        player.setOnPreparedListener(null);
+        player.setOnErrorListener(null);
+        player.setOnInfoListener(null);
+        try {
+            if (player.isPlaying()) player.stop();
+        } catch (IllegalStateException ignored) {
+            // Player may be preparing, stopped, or already released after an error.
+        }
+        player.release();
     }
 
     // ─── Notification helpers ─────────────────────────────────────────────

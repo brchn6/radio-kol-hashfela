@@ -2,6 +2,7 @@ package com.radioapp;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -18,6 +19,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -213,7 +215,11 @@ public class MainActivity extends Activity {
     private void openWhatsApp() {
         String url = "https://wa.me/" + getString(R.string.whatsapp_phone)
                 + "?text=" + Uri.encode(getString(R.string.whatsapp_message));
-        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "No app found to open WhatsApp link", Toast.LENGTH_LONG).show();
+        }
     }
 
     private String randomHashfelaBackgroundUrl() {
