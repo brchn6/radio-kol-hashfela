@@ -11,7 +11,9 @@ import android.media.MediaPlayer;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 
 import java.io.IOException;
@@ -22,22 +24,39 @@ public class RadioService extends Service {
     private static final int NOTIF_ID = 1001;
     private static final String TAG = "RadioService";
 
+    private static final long BASE_RECONNECT_DELAY_MS = 2000;
+    private static final long MAX_RECONNECT_DELAY_MS = 30000;
+
     public static final String ACTION_PLAY = "com.radioapp.PLAY";
     public static final String ACTION_STOP = "com.radioapp.STOP";
 
     private final Object playerLock = new Object();
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     private MediaPlayer mediaPlayer;
     private MediaSession mediaSession;
+    private boolean shouldKeepPlaying = false;
     private boolean isPreparing = false;
     private boolean isPlaying = false;
+    private int reconnectAttempt = 0;
+
+    private final Runnable reconnectRunnable = () -> {
+        boolean shouldStart;
+        synchronized (playerLock) {
+            shouldStart = shouldKeepPlaying && mediaPlayer == null;
+        }
+        if (shouldStart) {
+            Log.i(TAG, "Retrying radio stream");
+            startPlayback();
+        }
+    };
 
     @Override
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
         createMediaSession();
-        startForeground(NOTIF_ID, buildNotification("Connecting\u2026", true));
+        startForeground(NOTIF_ID, buildNotification("Connecting…", true));
     }
 
     @Override
@@ -45,23 +64,30 @@ public class RadioService extends Service {
         String action = intent != null ? intent.getAction() : null;
 
         if (ACTION_STOP.equals(action)) {
-            stopPlayback();
-            updateNotification("Stopped", false);
+            stopPlaybackByUser();
             return START_NOT_STICKY;
         }
 
+        synchronized (playerLock) {
+            shouldKeepPlaying = true;
+            reconnectAttempt = 0;
+        }
         startPlayback();
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        handler.removeCallbacks(reconnectRunnable);
+        synchronized (playerLock) {
+            shouldKeepPlaying = false;
+        }
+        releaseCurrentPlayer();
         if (mediaSession != null) {
             mediaSession.setActive(false);
             mediaSession.release();
             mediaSession = null;
         }
-        stopPlayback();
         super.onDestroy();
     }
 
@@ -80,19 +106,21 @@ public class RadioService extends Service {
         mediaSession.setCallback(new MediaSession.Callback() {
             @Override
             public void onPlay() {
+                synchronized (playerLock) {
+                    shouldKeepPlaying = true;
+                    reconnectAttempt = 0;
+                }
                 startPlayback();
             }
 
             @Override
             public void onPause() {
-                stopPlayback();
-                updateNotification("Stopped", false);
+                stopPlaybackByUser();
             }
 
             @Override
             public void onStop() {
-                stopPlayback();
-                updateNotification("Stopped", false);
+                stopPlaybackByUser();
             }
         });
         mediaSession.setActive(true);
@@ -118,8 +146,9 @@ public class RadioService extends Service {
         MediaPlayer player;
 
         synchronized (playerLock) {
+            shouldKeepPlaying = true;
             if (mediaPlayer != null) {
-                updateNotification(isPlaying ? "Now Playing" : "Connecting\u2026", true);
+                updateNotification(isPlaying ? "Now Playing" : "Connecting…", true);
                 updatePlaybackState(isPlaying);
                 return;
             }
@@ -130,8 +159,10 @@ public class RadioService extends Service {
             isPlaying = false;
         }
 
-        updateNotification("Connecting\u2026", true);
+        handler.removeCallbacks(reconnectRunnable);
+        updateNotification("Connecting…", true);
         updatePlaybackState(false);
+        Log.i(TAG, "Starting radio stream");
 
         player.setAudioAttributes(new AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -142,13 +173,14 @@ public class RadioService extends Service {
             boolean started = false;
             boolean stalePlayer = false;
             synchronized (playerLock) {
-                if (mp != mediaPlayer) {
+                if (mp != mediaPlayer || !shouldKeepPlaying) {
                     stalePlayer = true;
                 } else {
                     isPreparing = false;
                     try {
                         mp.start();
                         isPlaying = true;
+                        reconnectAttempt = 0;
                         started = true;
                     } catch (IllegalStateException e) {
                         Log.e(TAG, "Failed to start prepared player", e);
@@ -165,11 +197,11 @@ public class RadioService extends Service {
             }
             if (!started) {
                 safeRelease(mp);
-                updateNotification("Error playing", false);
-                updatePlaybackState(false);
+                scheduleReconnect("Error playing");
                 return;
             }
 
+            Log.i(TAG, "Radio stream is playing");
             updateNotification("Now Playing", true);
             updatePlaybackState(true);
         });
@@ -179,9 +211,16 @@ public class RadioService extends Service {
                 if (mp != mediaPlayer) return true;
             }
             Log.e(TAG, "MediaPlayer error: what=" + what + " extra=" + extra);
-            stopPlayback();
-            updateNotification("Error playing", false);
+            handleUnexpectedStop(mp, "Stream interrupted");
             return true;
+        });
+
+        player.setOnCompletionListener(mp -> {
+            synchronized (playerLock) {
+                if (mp != mediaPlayer) return;
+            }
+            Log.w(TAG, "Live stream completed unexpectedly");
+            handleUnexpectedStop(mp, "Stream ended");
         });
 
         player.setOnInfoListener((mp, what, extra) -> {
@@ -189,8 +228,10 @@ public class RadioService extends Service {
                 if (mp != mediaPlayer) return true;
             }
             if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
-                updateNotification("Buffering\u2026", true);
+                Log.i(TAG, "Buffering started");
+                updateNotification("Buffering…", true);
             } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
+                Log.i(TAG, "Buffering ended");
                 updateNotification("Now Playing", true);
             }
             return false;
@@ -201,12 +242,71 @@ public class RadioService extends Service {
             player.prepareAsync();
         } catch (IOException | IllegalStateException e) {
             Log.e(TAG, "Failed to prepare stream", e);
-            stopPlayback();
-            updateNotification("Error: " + e.getMessage(), false);
+            boolean currentPlayer;
+            synchronized (playerLock) {
+                currentPlayer = player == mediaPlayer;
+                if (currentPlayer) {
+                    mediaPlayer = null;
+                    isPreparing = false;
+                    isPlaying = false;
+                }
+            }
+            safeRelease(player);
+            if (currentPlayer) {
+                scheduleReconnect("Connection failed");
+            }
         }
     }
 
-    private void stopPlayback() {
+    private void stopPlaybackByUser() {
+        Log.i(TAG, "Stopping playback by user request");
+        handler.removeCallbacks(reconnectRunnable);
+        synchronized (playerLock) {
+            shouldKeepPlaying = false;
+            reconnectAttempt = 0;
+        }
+        releaseCurrentPlayer();
+        updateNotification("Stopped", false);
+    }
+
+    private void handleUnexpectedStop(MediaPlayer stoppedPlayer, String status) {
+        boolean retry;
+        synchronized (playerLock) {
+            if (stoppedPlayer != mediaPlayer) return;
+            retry = shouldKeepPlaying;
+        }
+
+        releaseCurrentPlayer();
+        if (retry) {
+            scheduleReconnect(status);
+        } else {
+            updateNotification("Stopped", false);
+        }
+    }
+
+    private void scheduleReconnect(String reason) {
+        long delayMs;
+        synchronized (playerLock) {
+            if (!shouldKeepPlaying) {
+                updateNotification(reason, false);
+                updatePlaybackState(false);
+                return;
+            }
+            delayMs = Math.min(
+                    BASE_RECONNECT_DELAY_MS * (1L << Math.min(reconnectAttempt, 4)),
+                    MAX_RECONNECT_DELAY_MS);
+            reconnectAttempt++;
+        }
+
+        long delaySeconds = Math.max(1, delayMs / 1000);
+        Log.w(TAG, reason + "; reconnecting in " + delaySeconds + "s");
+        updateNotification(reason + " — reconnecting in " + delaySeconds + "s", true);
+        updatePlaybackState(false);
+        handler.removeCallbacks(reconnectRunnable);
+        handler.postDelayed(reconnectRunnable, delayMs);
+    }
+
+    private void releaseCurrentPlayer() {
         MediaPlayer playerToRelease;
         synchronized (playerLock) {
             playerToRelease = mediaPlayer;
@@ -223,6 +323,7 @@ public class RadioService extends Service {
         if (player == null) return;
         player.setOnPreparedListener(null);
         player.setOnErrorListener(null);
+        player.setOnCompletionListener(null);
         player.setOnInfoListener(null);
         try {
             if (player.isPlaying()) player.stop();
@@ -275,6 +376,7 @@ public class RadioService extends Service {
                 .addAction(actionIcon, actionLabel, actionPendingIntent)
                 .setStyle(mediaStyle)
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
                 .setShowWhen(false)
                 .build();
     }
