@@ -155,28 +155,6 @@ public class MainActivity extends Activity {
         waParams.setMargins(dpToPx(20), 0, 0, dpToPx(40));
         whatsappButton.setLayoutParams(waParams);
 
-        // ─── Identify Button — bottom-right ──────────────────────────
-        Button identifyButton = new Button(this, null, android.R.attr.buttonStyle);
-        identifyButton.setText("\uD83C\uDFB5  Identify");
-        identifyButton.setTextSize(15);
-        identifyButton.setTypeface(Typeface.DEFAULT);
-        identifyButton.setTextColor(Color.WHITE);
-        identifyButton.setAllCaps(false);
-
-        GradientDrawable identifyBg = new GradientDrawable();
-        identifyBg.setShape(GradientDrawable.RECTANGLE);
-        identifyBg.setCornerRadius(dpToPx(24));
-        identifyBg.setColor(Color.argb(220, 60, 90, 200));
-        identifyButton.setBackground(identifyBg);
-        identifyButton.setPadding(dpToPx(20), dpToPx(12), dpToPx(24), dpToPx(12));
-        identifyButton.setOnClickListener(v -> openSongIdentifier());
-
-        FrameLayout.LayoutParams identifyParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        identifyParams.gravity = Gravity.BOTTOM | Gravity.END;
-        identifyParams.setMargins(0, 0, dpToPx(20), dpToPx(40));
-        identifyButton.setLayoutParams(identifyParams);
 
         // ─── Root: FrameLayout stacks everything ─────────────────────
         FrameLayout root = new FrameLayout(this);
@@ -190,9 +168,8 @@ public class MainActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT);
         root.addView(centerColumn, centerParams);
 
-        // Bottom actions layered on top
+        // WhatsApp layered on top
         root.addView(whatsappButton, waParams);
-        root.addView(identifyButton, identifyParams);
 
         setContentView(root);
 
@@ -278,21 +255,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void openSongIdentifier() {
-        Intent shazamIntent = getPackageManager().getLaunchIntentForPackage("com.shazam.android");
-        if (shazamIntent != null) {
-            startActivity(shazamIntent);
-            return;
-        }
-
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("market://details?id=com.shazam.android")));
-        } catch (ActivityNotFoundException e) {
-            startActivity(new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=com.shazam.android")));
-        }
-    }
 
     private String randomHashfelaBackgroundUrl() {
         return HASHFELA_BACKGROUND_URLS[new Random().nextInt(HASHFELA_BACKGROUND_URLS.length)];
