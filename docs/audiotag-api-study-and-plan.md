@@ -323,3 +323,19 @@ Initial unauthenticated/auth-header probes against `https://audiotag.info/api` s
 ## UI rollback note
 
 The direct AudioTag recognition prototype was tested successfully, but the visible in-app **AudioTag** button was removed afterward by request. The current installed build does not expose AudioTag recognition in the UI and does not embed the local AudioTag key during build.
+
+## Automatic mode update
+
+The visible AudioTag button remains removed. Automatic recognition is now handled by `RadioService`:
+
+- When playback starts, the service waits about 20 seconds.
+- It captures about 128 KB from a separate HTTP connection to the station stream.
+- It submits the sample to AudioTag with `action=identify`.
+- It polls with `action=get_result`.
+- The best result is broadcast to the UI and shown in the notification.
+- It repeats about every 5 minutes while playback continues.
+- Generic ICY metadata like `Streaming Powered By Multix` is ignored after a real AudioTag result so it does not overwrite the track name.
+
+Local phone test on 2026-07-13 succeeded: AudioTag returned `Real McCoy — Another Night` from a live station sample.
+
+Cost/quota note: the app sends short samples automatically, so it consumes AudioTag free seconds while radio playback continues. Current interval is intentionally conservative: about one recognition every 5 minutes.

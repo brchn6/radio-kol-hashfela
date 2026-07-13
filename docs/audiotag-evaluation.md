@@ -44,3 +44,7 @@ The key is loaded from local `.env` during local builds and is not committed to 
 ## UI rollback note
 
 The visible **AudioTag** button was removed by request. The app currently keeps ICY metadata display only; AudioTag work remains documented on this branch for future backend/proxy integration.
+
+## Automatic mode update
+
+The app now uses AudioTag automatically from `RadioService` with no visible button. It captures a short sample after playback starts and repeats periodically while playing. A live phone test successfully displayed a recognized track.
