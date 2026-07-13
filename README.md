@@ -38,6 +38,8 @@ button for sending the station a pre-filled Hebrew compliment.
 - **Automatic AudioTag recognition (dev build).** The `dev/audiotag` branch
   identifies the stream automatically in the background. There is no visible
   AudioTag button; results appear in the app/notification when found.
+- **Last playlist.** Keeps the last 5 recognized tracks on screen and adds
+  a **Copy playlist** button to copy them to the clipboard.
 - **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
   number with the message: `שיר מעולה, אתם הכי טובים!`
 - **No Google Play Services.** Not even a dependency. This app
@@ -98,7 +100,7 @@ in Xcode and choose your Apple development team for signing.
 
 A random nature photo from Israel's Hashfela/Shfela area is fetched
 when you open the app. The main button is **Play / Stop**, right in
-the center, with a quick WhatsApp button at the bottom.
+the center, with quick **WhatsApp** and **Copy playlist** buttons at the bottom.
 
 <img src="mockup.svg" alt="App mockup" width="320">
 
@@ -123,8 +125,15 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
   app/notification when the station provides it. Real in-app music
   fingerprinting requires a recognition API/service.
 - **Automatic AudioTag API prototype** — when built locally with `.env`,
-  captures a short stream sample every few minutes and displays the best
+  captures a stream sample every few minutes and displays the best
   `Artist — Track` result; the key is not committed to git
+- **AudioTag quota limitation** — AudioTag charges by analyzed audio seconds.
+  With a 10,800-second free budget and ~50-second captured samples, this is
+  roughly 216 recognitions per free budget period. Automatic recognition may
+  miss a song change until the next scheduled check and should be tuned with
+  quota in mind.
+- **Playlist history** — stores up to 5 recognized tracks locally and lets the
+  user copy the list
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
 - **~24 KB Android APK** — smaller than most favicons

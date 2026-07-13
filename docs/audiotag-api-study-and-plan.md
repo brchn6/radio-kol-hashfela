@@ -339,3 +339,27 @@ The visible AudioTag button remains removed. Automatic recognition is now handle
 Local phone test on 2026-07-13 succeeded: AudioTag returned `Real McCoy — Another Night` from a live station sample.
 
 Cost/quota note: the app sends short samples automatically, so it consumes AudioTag free seconds while radio playback continues. Current interval is intentionally conservative: about one recognition every 5 minutes.
+
+## Quota / automatic-search limitation
+
+AudioTag charges by analyzed audio duration, not by number of button presses or API calls. The current account showed 10,800 free seconds available.
+
+The Android automatic recognizer currently captures about 384 KB from the AAC+ stream. In practical tests AudioTag treated similar samples as roughly ~48–50 seconds of audio. This larger sample size is intentional: smaller raw AAC+ samples were rejected by AudioTag as `audio is too short`.
+
+Conservative quota math:
+
+- 10,800 free seconds / ~50 seconds per recognition ≈ **216 recognitions per free-budget period**.
+- If that budget is treated as monthly, that is only about **7 recognitions/day**.
+- An automatic interval of 5 minutes can theoretically do up to **288 recognitions/day** if the app plays all day, which can burn quota fast.
+
+Functional limitation:
+
+- The station stream does not publish real song-change events.
+- The app can only identify on a timer.
+- If a track changes just after an identification run, the app may show the previous track until the next scheduled run.
+
+Possible future improvement:
+
+- Add a user-visible `Identify now` button for manual refresh without increasing background quota use.
+- Use a backend proxy to enforce daily quotas/cooldowns safely.
+- Tune automatic interval based on the user's quota preference.

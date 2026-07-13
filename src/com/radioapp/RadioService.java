@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.media.session.MediaSession;
@@ -15,6 +16,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.util.Base64;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -31,6 +33,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 public class RadioService extends Service {
 
@@ -49,6 +54,9 @@ public class RadioService extends Service {
     public static final String ACTION_STOP = "com.radioapp.STOP";
     public static final String ACTION_METADATA_UPDATE = "com.radioapp.METADATA_UPDATE";
     public static final String EXTRA_METADATA = "metadata";
+
+    private static final String PREFS_NAME = "radio_prefs";
+    private static final String PREF_TRACK_HISTORY = "track_history_json";
 
     private final Object playerLock = new Object();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -429,6 +437,7 @@ public class RadioService extends Service {
             lastIdentifiedTrack = track;
             currentMetadata = track;
         }
+        saveTrackToHistory(track);
         Log.i(TAG, "AudioTag recognized: " + track);
         broadcastMetadata(track);
         updateNotification(track, true);
@@ -446,6 +455,36 @@ public class RadioService extends Service {
         return normalized.isEmpty()
                 || "streaming powered by multix".equals(normalized)
                 || "radio kol hashfela".equals(normalized);
+    }
+
+    private boolean isRealTrackName(String track) {
+        if (track == null) return false;
+        String normalized = track.trim().toLowerCase();
+        return !normalized.isEmpty()
+                && !"song not found".equals(normalized)
+                && !normalized.startsWith("audiotag")
+                && !isGenericMetadata(track);
+    }
+
+    private void saveTrackToHistory(String track) {
+        if (!isRealTrackName(track)) return;
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            JSONArray oldTracks = new JSONArray(prefs.getString(PREF_TRACK_HISTORY, "[]"));
+            JSONArray newTracks = new JSONArray();
+            newTracks.put(track);
+
+            for (int i = 0; i < oldTracks.length() && newTracks.length() < 5; i++) {
+                String existing = oldTracks.optString(i, "").trim();
+                if (!existing.isEmpty() && !existing.equals(track)) {
+                    newTracks.put(existing);
+                }
+            }
+
+            prefs.edit().putString(PREF_TRACK_HISTORY, newTracks.toString()).apply();
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to save track history", e);
+        }
     }
 
     private String fetchIcyMetadata() {

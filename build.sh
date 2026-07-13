@@ -41,12 +41,23 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     . "$PROJECT_DIR/.env"
     set +a
 fi
-python3 - <<PY
+BUILD_GENERATED_RES="$BUILD_DIR/generated-res/values/secrets.xml" python3 - <<'PY'
+import os
 from pathlib import Path
 from xml.sax.saxutils import escape
-key = escape("${AUDIOTAG_API_TOKEN:-}")
-out = Path("$BUILD_DIR/generated-res/values/secrets.xml")
-out.write_text(f'''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="audiotag_api_key">{key}</string>\n</resources>\n''')
+
+values = {
+    "audiotag_api_key": os.environ.get("AUDIOTAG_API_TOKEN", ""),
+    "acrcloud_host": os.environ.get("ACRCLOUD_HOST", ""),
+    "acrcloud_access_key": os.environ.get("ACRCLOUD_ACCESS_KEY", ""),
+    "acrcloud_access_secret": os.environ.get("ACRCLOUD_ACCESS_SECRET", ""),
+}
+
+lines = ["<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<resources>"]
+for name, value in values.items():
+    lines.append(f"    <string name=\"{name}\">{escape(value)}</string>")
+lines.append("</resources>")
+Path(os.environ["BUILD_GENERATED_RES"]).write_text("\n".join(lines) + "\n")
 PY
 "$AAPT2" compile -o "$BUILD_DIR/apk/resources.zip" \
     "$RES_DIR"/values/*.xml \

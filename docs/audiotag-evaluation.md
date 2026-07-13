@@ -48,3 +48,9 @@ The visible **AudioTag** button was removed by request. The app currently keeps 
 ## Automatic mode update
 
 The app now uses AudioTag automatically from `RadioService` with no visible button. It captures a short sample after playback starts and repeats periodically while playing. A live phone test successfully displayed a recognized track.
+
+## Quota / refresh limitation
+
+AudioTag recognition is not continuous. The station does not send song-change events, so automatic mode identifies on a timer. This means track names can lag behind the real radio by up to the configured interval.
+
+The current raw AAC+ capture is ~384 KB because smaller samples failed with `audio is too short`. Treat each recognition as roughly up to ~50 analyzed seconds for quota planning. With 10,800 free seconds, this is approximately 216 recognitions per budget period.
