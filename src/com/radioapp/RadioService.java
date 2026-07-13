@@ -40,7 +40,7 @@ public class RadioService extends Service {
 
     private static final long BASE_RECONNECT_DELAY_MS = 2000;
     private static final long MAX_RECONNECT_DELAY_MS = 30000;
-    private static final long AUTO_IDENTIFY_INITIAL_DELAY_MS = 20000;
+    private static final long AUTO_IDENTIFY_INITIAL_DELAY_MS = 5000;
     private static final long AUTO_IDENTIFY_INTERVAL_MS = 5 * 60 * 1000;
     // Raw AAC+ needs a larger captured chunk for AudioTag to estimate duration reliably.
     private static final int AUDIOTAG_SAMPLE_BYTES = 384 * 1024;
@@ -125,6 +125,7 @@ public class RadioService extends Service {
             new Thread(() -> {
                 try {
                     Log.i(TAG, "Auto AudioTag identification started");
+                    broadcastMetadata("Identifying song…");
                     updateNotification("Identifying song…", true);
                     File sample = captureStreamSampleForAudioTag();
                     String result = identifyWithAudioTag(sample, apiKey);
@@ -296,7 +297,7 @@ public class RadioService extends Service {
             }
 
             Log.i(TAG, "Radio stream is playing");
-            updateNotification(currentMetadata.isEmpty() ? "Now Playing" : currentMetadata, true);
+            updateNotification(currentMetadata.isEmpty() ? "Identifying song…" : currentMetadata, true);
             updatePlaybackState(true);
             scheduleMetadataUpdates();
             scheduleNextAudioTagRun(AUTO_IDENTIFY_INITIAL_DELAY_MS);
@@ -363,7 +364,6 @@ public class RadioService extends Service {
             shouldKeepPlaying = false;
             reconnectAttempt = 0;
             currentMetadata = "";
-            lastIdentifiedTrack = "";
         }
         releaseCurrentPlayer();
         updateNotification("Stopped", false);
@@ -412,10 +412,11 @@ public class RadioService extends Service {
     }
 
     private void updateMetadata(String metadata) {
+        if (isGenericMetadata(metadata)) {
+            Log.i(TAG, "Ignoring generic stream metadata: " + metadata);
+            return;
+        }
         synchronized (playerLock) {
-            if (isGenericMetadata(metadata) && !lastIdentifiedTrack.isEmpty()) {
-                return;
-            }
             currentMetadata = metadata;
         }
         Log.i(TAG, "Stream metadata: " + metadata);

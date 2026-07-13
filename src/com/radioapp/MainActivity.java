@@ -214,7 +214,7 @@ public class MainActivity extends Activity {
         } else {
             startRadioService(RadioService.ACTION_PLAY);
             toggleButton.setText("\u23F8");   // ⏸
-            statusText.setText("Now Playing\u2026");
+            statusText.setText("Identifying song…");
             isPlaying = true;
         }
     }
