@@ -290,3 +290,16 @@ Keep the current `dev/audiotag` app as a safe no-key prototype:
 - It has an AudioTag web shortcut.
 
 For real in-app identification, next step is to create/login to an AudioTag account and copy the exact API docs/request format into this repo, then implement the backend proxy first.
+
+## Local token handling update
+
+A local `.env` file is now used for AudioTag credentials and is ignored by git.
+
+Expected local variables:
+
+```bash
+AUDIOTAG_API_TOKEN=...
+AUDIOTAG_API_BASE_URL=https://audiotag.info/api
+```
+
+Initial unauthenticated/auth-header probes against `https://audiotag.info/api` still returned `invalid command or parameter`, which means the token alone is not enough to infer the API command format from the public endpoint. The exact command names and upload flow still need the authenticated AudioTag account API docs.
