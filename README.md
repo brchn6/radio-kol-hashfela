@@ -16,8 +16,9 @@ The repo contains the original Android app plus a matching iPhone/iOS
 SwiftUI app under `ios/`.
 
 It now includes notification-area Play/Stop controls, Shfela-region
-nature backgrounds, and a quick WhatsApp button for sending the station
-a pre-filled Hebrew compliment.
+nature backgrounds, ICY stream metadata display, a no-key Shazam handoff
+button for song identification, and a quick WhatsApp button for sending
+the station a pre-filled Hebrew compliment.
 
 ## What makes this different
 
@@ -32,6 +33,11 @@ a pre-filled Hebrew compliment.
   notification shade / top area without reopening the app.
 - **Shfela scenery.** The background image is randomly chosen from
   nature photos around the Hashfela/Shfela region.
+- **Now playing metadata.** Reads the station's ICY stream metadata when
+  available. Currently the stream reports `Streaming Powered By Multix`.
+- **Song identification handoff.** A no-key **Identify** button opens
+  Shazam if installed, or its Play Store page if not. True in-app music
+  fingerprinting requires a recognition service/API.
 - **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
   number with the message: `שיר מעולה, אתם הכי טובים!`
 - **No Google Play Services.** Not even a dependency. This app
@@ -92,7 +98,7 @@ in Xcode and choose your Apple development team for signing.
 
 A random nature photo from Israel's Hashfela/Shfela area is fetched
 when you open the app. The main button is **Play / Stop**, right in
-the center, with a quick WhatsApp button for sending love to the station.
+the center, with quick WhatsApp and song-identify buttons at the bottom.
 
 <img src="mockup.svg" alt="App mockup" width="320">
 
@@ -113,6 +119,10 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
   notification shade
 - **iOS background audio + Now Playing controls** — supports Control Center,
   lock screen, and headset controls
+- **ICY metadata reader** — polls the stream metadata and shows it in the
+  app/notification when the station provides it
+- **No-key song identification handoff** — opens Shazam externally instead
+  of embedding a paid/API-key recognition service
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
 - **~24 KB Android APK** — smaller than most favicons

@@ -16,7 +16,11 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class RadioService extends Service {
 
@@ -29,6 +33,8 @@ public class RadioService extends Service {
 
     public static final String ACTION_PLAY = "com.radioapp.PLAY";
     public static final String ACTION_STOP = "com.radioapp.STOP";
+    public static final String ACTION_METADATA_UPDATE = "com.radioapp.METADATA_UPDATE";
+    public static final String EXTRA_METADATA = "metadata";
 
     private final Object playerLock = new Object();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -38,7 +44,9 @@ public class RadioService extends Service {
     private boolean shouldKeepPlaying = false;
     private boolean isPreparing = false;
     private boolean isPlaying = false;
+    private boolean metadataFetchInProgress = false;
     private int reconnectAttempt = 0;
+    private String currentMetadata = "";
 
     private final Runnable reconnectRunnable = () -> {
         boolean shouldStart;
@@ -48,6 +56,38 @@ public class RadioService extends Service {
         if (shouldStart) {
             Log.i(TAG, "Retrying radio stream");
             startPlayback();
+        }
+    };
+
+    private final Runnable metadataRunnable = new Runnable() {
+        @Override
+        public void run() {
+            boolean shouldFetch;
+            synchronized (playerLock) {
+                shouldFetch = shouldKeepPlaying && isPlaying && !metadataFetchInProgress;
+                if (shouldFetch) metadataFetchInProgress = true;
+            }
+
+            if (shouldFetch) {
+                new Thread(() -> {
+                    try {
+                        String metadata = fetchIcyMetadata();
+                        if (metadata != null && !metadata.trim().isEmpty()) {
+                            updateMetadata(metadata.trim());
+                        }
+                    } finally {
+                        synchronized (playerLock) {
+                            metadataFetchInProgress = false;
+                        }
+                    }
+                }, "IcyMetadataReader").start();
+            }
+
+            synchronized (playerLock) {
+                if (shouldKeepPlaying) {
+                    handler.postDelayed(this, 30000);
+                }
+            }
         }
     };
 
@@ -79,6 +119,7 @@ public class RadioService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacks(reconnectRunnable);
+        handler.removeCallbacks(metadataRunnable);
         synchronized (playerLock) {
             shouldKeepPlaying = false;
         }
@@ -202,8 +243,9 @@ public class RadioService extends Service {
             }
 
             Log.i(TAG, "Radio stream is playing");
-            updateNotification("Now Playing", true);
+            updateNotification(currentMetadata.isEmpty() ? "Now Playing" : currentMetadata, true);
             updatePlaybackState(true);
+            scheduleMetadataUpdates();
         });
 
         player.setOnErrorListener((mp, what, extra) -> {
@@ -261,9 +303,11 @@ public class RadioService extends Service {
     private void stopPlaybackByUser() {
         Log.i(TAG, "Stopping playback by user request");
         handler.removeCallbacks(reconnectRunnable);
+        handler.removeCallbacks(metadataRunnable);
         synchronized (playerLock) {
             shouldKeepPlaying = false;
             reconnectAttempt = 0;
+            currentMetadata = "";
         }
         releaseCurrentPlayer();
         updateNotification("Stopped", false);
@@ -304,6 +348,85 @@ public class RadioService extends Service {
         updatePlaybackState(false);
         handler.removeCallbacks(reconnectRunnable);
         handler.postDelayed(reconnectRunnable, delayMs);
+    }
+
+    private void scheduleMetadataUpdates() {
+        handler.removeCallbacks(metadataRunnable);
+        handler.post(metadataRunnable);
+    }
+
+    private void updateMetadata(String metadata) {
+        synchronized (playerLock) {
+            currentMetadata = metadata;
+        }
+        Log.i(TAG, "Stream metadata: " + metadata);
+        Intent intent = new Intent(ACTION_METADATA_UPDATE);
+        intent.setPackage(getPackageName());
+        intent.putExtra(EXTRA_METADATA, metadata);
+        sendBroadcast(intent);
+        updateNotification(metadata, true);
+    }
+
+    private String fetchIcyMetadata() {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(getString(R.string.radio_url));
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.setRequestProperty("Icy-MetaData", "1");
+            conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
+            conn.connect();
+
+            String metaintHeader = conn.getHeaderField("icy-metaint");
+            if (metaintHeader == null) return null;
+            int metaint = Integer.parseInt(metaintHeader.trim());
+            if (metaint <= 0) return null;
+
+            InputStream input = conn.getInputStream();
+            skipFully(input, metaint);
+            int metadataBlocks = input.read();
+            if (metadataBlocks <= 0) return null;
+
+            int metadataLength = metadataBlocks * 16;
+            ByteArrayOutputStream out = new ByteArrayOutputStream(metadataLength);
+            byte[] buffer = new byte[metadataLength];
+            int total = 0;
+            while (total < metadataLength) {
+                int read = input.read(buffer, total, metadataLength - total);
+                if (read < 0) break;
+                total += read;
+            }
+            out.write(buffer, 0, total);
+            return parseStreamTitle(out.toString("UTF-8"));
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to read stream metadata", e);
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void skipFully(InputStream input, int bytesToSkip) throws IOException {
+        long remaining = bytesToSkip;
+        while (remaining > 0) {
+            long skipped = input.skip(remaining);
+            if (skipped <= 0) {
+                if (input.read() == -1) throw new IOException("End of stream while skipping audio");
+                skipped = 1;
+            }
+            remaining -= skipped;
+        }
+    }
+
+    private String parseStreamTitle(String metadata) {
+        String marker = "StreamTitle='";
+        int start = metadata.indexOf(marker);
+        if (start < 0) return metadata.replace("\u0000", "").trim();
+        start += marker.length();
+        int end = metadata.indexOf("';", start);
+        if (end < 0) end = metadata.length();
+        return metadata.substring(start, end).replace("\u0000", "").trim();
     }
 
     private void releaseCurrentPlayer() {

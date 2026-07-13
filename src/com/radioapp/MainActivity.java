@@ -3,7 +3,10 @@ package com.radioapp;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -42,6 +45,18 @@ public class MainActivity extends Activity {
     private Button toggleButton;
     private TextView statusText;
     private boolean isPlaying = false;
+
+    private final BroadcastReceiver metadataReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (RadioService.ACTION_METADATA_UPDATE.equals(intent.getAction()) && isPlaying) {
+                String metadata = intent.getStringExtra(RadioService.EXTRA_METADATA);
+                if (metadata != null && !metadata.trim().isEmpty()) {
+                    statusText.setText(metadata);
+                }
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -140,6 +155,29 @@ public class MainActivity extends Activity {
         waParams.setMargins(dpToPx(20), 0, 0, dpToPx(40));
         whatsappButton.setLayoutParams(waParams);
 
+        // ─── Identify Button — bottom-right ──────────────────────────
+        Button identifyButton = new Button(this, null, android.R.attr.buttonStyle);
+        identifyButton.setText("\uD83C\uDFB5  Identify");
+        identifyButton.setTextSize(15);
+        identifyButton.setTypeface(Typeface.DEFAULT);
+        identifyButton.setTextColor(Color.WHITE);
+        identifyButton.setAllCaps(false);
+
+        GradientDrawable identifyBg = new GradientDrawable();
+        identifyBg.setShape(GradientDrawable.RECTANGLE);
+        identifyBg.setCornerRadius(dpToPx(24));
+        identifyBg.setColor(Color.argb(220, 60, 90, 200));
+        identifyButton.setBackground(identifyBg);
+        identifyButton.setPadding(dpToPx(20), dpToPx(12), dpToPx(24), dpToPx(12));
+        identifyButton.setOnClickListener(v -> openSongIdentifier());
+
+        FrameLayout.LayoutParams identifyParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        identifyParams.gravity = Gravity.BOTTOM | Gravity.END;
+        identifyParams.setMargins(0, 0, dpToPx(20), dpToPx(40));
+        identifyButton.setLayoutParams(identifyParams);
+
         // ─── Root: FrameLayout stacks everything ─────────────────────
         FrameLayout root = new FrameLayout(this);
         root.addView(backgroundImage, new FrameLayout.LayoutParams(
@@ -152,8 +190,9 @@ public class MainActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT);
         root.addView(centerColumn, centerParams);
 
-        // WhatsApp layered on top
+        // Bottom actions layered on top
         root.addView(whatsappButton, waParams);
+        root.addView(identifyButton, identifyParams);
 
         setContentView(root);
 
@@ -169,6 +208,23 @@ public class MainActivity extends Activity {
 
         // ─── Auto-start playback ─────────────────────────────────────
         togglePlayback();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        IntentFilter filter = new IntentFilter(RadioService.ACTION_METADATA_UPDATE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(metadataReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(metadataReceiver, filter);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        unregisterReceiver(metadataReceiver);
+        super.onStop();
     }
 
     // ─── Toggle play / stop ────────────────────────────────────────────────
@@ -219,6 +275,22 @@ public class MainActivity extends Activity {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (ActivityNotFoundException e) {
             Toast.makeText(this, "No app found to open WhatsApp link", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void openSongIdentifier() {
+        Intent shazamIntent = getPackageManager().getLaunchIntentForPackage("com.shazam.android");
+        if (shazamIntent != null) {
+            startActivity(shazamIntent);
+            return;
+        }
+
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=com.shazam.android")));
+        } catch (ActivityNotFoundException e) {
+            startActivity(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://play.google.com/store/apps/details?id=com.shazam.android")));
         }
     }
 
