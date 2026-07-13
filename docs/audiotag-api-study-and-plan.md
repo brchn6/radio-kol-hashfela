@@ -319,3 +319,7 @@ AUDIOTAG_API_BASE_URL=https://audiotag.info/api
 ```
 
 Initial unauthenticated/auth-header probes against `https://audiotag.info/api` still returned `invalid command or parameter`, which means the token alone is not enough to infer the API command format from the public endpoint. The exact command names and upload flow still need the authenticated AudioTag account API docs.
+
+## UI rollback note
+
+The direct AudioTag recognition prototype was tested successfully, but the visible in-app **AudioTag** button was removed afterward by request. The current installed build does not expose AudioTag recognition in the UI and does not embed the local AudioTag key during build.

@@ -16,9 +16,8 @@ The repo contains the original Android app plus a matching iPhone/iOS
 SwiftUI app under `ios/`.
 
 It now includes notification-area Play/Stop controls, Shfela-region
-nature backgrounds, ICY stream metadata display, a quick AudioTag web
-button, and a quick WhatsApp button for sending the station a pre-filled
-Hebrew compliment.
+nature backgrounds, ICY stream metadata display, and a quick WhatsApp
+button for sending the station a pre-filled Hebrew compliment.
 
 ## What makes this different
 
@@ -36,10 +35,9 @@ Hebrew compliment.
 - **Now playing metadata.** Reads the station's ICY stream metadata when
   available. Currently the stream reports `Streaming Powered By Multix`,
   not real song title/artist data.
-- **AudioTag identification (dev build).** On the `dev/audiotag` branch,
-  the AudioTag button captures a short stream sample, sends it to AudioTag,
-  and shows `Artist — Track` when AudioTag finds a match. The API key is
-  loaded from local `.env` at build time and is not committed to git.
+- **AudioTag research branch.** The `dev/audiotag` branch documents and
+  prototypes AudioTag API recognition, but the visible in-app AudioTag
+  button was removed from the installed app.
 - **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
   number with the message: `שיר מעולה, אתם הכי טובים!`
 - **No Google Play Services.** Not even a dependency. This app
@@ -100,7 +98,7 @@ in Xcode and choose your Apple development team for signing.
 
 A random nature photo from Israel's Hashfela/Shfela area is fetched
 when you open the app. The main button is **Play / Stop**, right in
-the center, with quick AudioTag and WhatsApp buttons at the bottom.
+the center, with a quick WhatsApp button at the bottom.
 
 <img src="mockup.svg" alt="App mockup" width="320">
 
@@ -124,8 +122,8 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 - **ICY metadata reader** — polls the stream metadata and shows it in the
   app/notification when the station provides it. Real in-app music
   fingerprinting requires a recognition API/service.
-- **AudioTag API prototype** — captures ~15 seconds from the stream and uses
-  `action=identify` / `action=get_result` to display the best match in-app
+- **AudioTag API research** — documented in `docs/`, but not exposed as an
+  in-app button in the current installed build
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
 - **~24 KB Android APK** — smaller than most favicons

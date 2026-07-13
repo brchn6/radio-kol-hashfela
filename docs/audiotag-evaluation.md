@@ -40,3 +40,7 @@ The key is loaded from local `.env` during local builds and is not committed to 
 ## Test status
 
 - Android build passes with `./build.sh`.
+
+## UI rollback note
+
+The visible **AudioTag** button was removed by request. The app currently keeps ICY metadata display only; AudioTag work remains documented on this branch for future backend/proxy integration.

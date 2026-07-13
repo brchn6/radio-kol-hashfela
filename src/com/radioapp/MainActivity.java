@@ -24,19 +24,9 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.Random;
 
 public class MainActivity extends Activity {
@@ -165,29 +155,6 @@ public class MainActivity extends Activity {
         waParams.setMargins(dpToPx(20), 0, 0, dpToPx(40));
         whatsappButton.setLayoutParams(waParams);
 
-        // ─── AudioTag Button — bottom-right ──────────────────────────
-        Button audioTagButton = new Button(this, null, android.R.attr.buttonStyle);
-        audioTagButton.setText("\uD83C\uDFB5  AudioTag");
-        audioTagButton.setTextSize(15);
-        audioTagButton.setTypeface(Typeface.DEFAULT);
-        audioTagButton.setTextColor(Color.WHITE);
-        audioTagButton.setAllCaps(false);
-
-        GradientDrawable audioTagBg = new GradientDrawable();
-        audioTagBg.setShape(GradientDrawable.RECTANGLE);
-        audioTagBg.setCornerRadius(dpToPx(24));
-        audioTagBg.setColor(Color.argb(220, 60, 90, 200));
-        audioTagButton.setBackground(audioTagBg);
-        audioTagButton.setPadding(dpToPx(20), dpToPx(12), dpToPx(24), dpToPx(12));
-        audioTagButton.setOnClickListener(v -> identifyCurrentSong(audioTagButton));
-
-        FrameLayout.LayoutParams audioTagParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        audioTagParams.gravity = Gravity.BOTTOM | Gravity.END;
-        audioTagParams.setMargins(0, 0, dpToPx(20), dpToPx(40));
-        audioTagButton.setLayoutParams(audioTagParams);
-
 
         // ─── Root: FrameLayout stacks everything ─────────────────────
         FrameLayout root = new FrameLayout(this);
@@ -201,9 +168,8 @@ public class MainActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT);
         root.addView(centerColumn, centerParams);
 
-        // Bottom actions layered on top
+        // WhatsApp layered on top
         root.addView(whatsappButton, waParams);
-        root.addView(audioTagButton, audioTagParams);
 
         setContentView(root);
 
@@ -290,179 +256,6 @@ public class MainActivity extends Activity {
     }
 
 
-    private void identifyCurrentSong(Button audioTagButton) {
-        String apiKey = getString(R.string.audiotag_api_key);
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            Toast.makeText(this, "AudioTag API key is missing in this build", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        audioTagButton.setEnabled(false);
-        statusText.setText("Capturing 15s sample…");
-
-        new Thread(() -> {
-            try {
-                File sample = captureStreamSample(15);
-                runOnUiThread(() -> statusText.setText("Identifying with AudioTag…"));
-                String result = identifyWithAudioTag(sample, apiKey.trim());
-                runOnUiThread(() -> {
-                    statusText.setText(result);
-                    audioTagButton.setEnabled(true);
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    statusText.setText("AudioTag failed");
-                    Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-                    audioTagButton.setEnabled(true);
-                });
-            }
-        }, "AudioTagIdentify").start();
-    }
-
-    private File captureStreamSample(int seconds) throws Exception {
-        File sample = new File(getCacheDir(), "audiotag-sample.aac");
-        URL url = new URL(getString(R.string.radio_url));
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(8000);
-        conn.setReadTimeout(8000);
-        conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-        conn.connect();
-
-        long endAt = System.currentTimeMillis() + seconds * 1000L;
-        byte[] buffer = new byte[8192];
-        int total = 0;
-        try (InputStream input = conn.getInputStream();
-             FileOutputStream output = new FileOutputStream(sample)) {
-            while (System.currentTimeMillis() < endAt) {
-                int read = input.read(buffer);
-                if (read < 0) break;
-                output.write(buffer, 0, read);
-                total += read;
-            }
-        } finally {
-            conn.disconnect();
-        }
-
-        if (total < 48_000) {
-            throw new Exception("Could not capture enough audio");
-        }
-        return sample;
-    }
-
-    private String identifyWithAudioTag(File sample, String apiKey) throws Exception {
-        JSONObject start = postAudioTagIdentify(sample, apiKey);
-        if (!start.optBoolean("success", false)) {
-            throw new Exception(start.optString("error", "AudioTag identify failed"));
-        }
-
-        String token = start.optString("token", "");
-        if (token.isEmpty()) {
-            throw new Exception("AudioTag did not return a token");
-        }
-
-        for (int i = 0; i < 60; i++) {
-            Thread.sleep(1000);
-            JSONObject result = postAudioTagResult(token, apiKey);
-            if (!result.optBoolean("success", false)) {
-                throw new Exception(result.optString("error", "AudioTag result failed"));
-            }
-
-            String state = result.optString("result", "wait");
-            if ("wait".equals(state)) continue;
-            if ("not found".equals(state)) return "Song not found";
-            if ("found".equals(state)) return parseAudioTagResult(result);
-            return "AudioTag: " + state;
-        }
-
-        return "AudioTag timed out";
-    }
-
-    private JSONObject postAudioTagIdentify(File sample, String apiKey) throws Exception {
-        String boundary = "----RadioKolHashfela" + System.currentTimeMillis();
-        HttpURLConnection conn = (HttpURLConnection) new URL("https://audiotag.info/api").openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(60000);
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-
-        try (DataOutputStream out = new DataOutputStream(conn.getOutputStream())) {
-            writeMultipartField(out, boundary, "action", "identify");
-            writeMultipartField(out, boundary, "apikey", apiKey);
-            writeMultipartField(out, boundary, "time_len", "15");
-            writeMultipartFile(out, boundary, "file", "radio-sample.aac", sample);
-            out.writeBytes("--" + boundary + "--\r\n");
-        }
-
-        return readJsonResponse(conn);
-    }
-
-    private JSONObject postAudioTagResult(String token, String apiKey) throws Exception {
-        String body = "action=get_result&apikey=" + Uri.encode(apiKey) + "&token=" + Uri.encode(token);
-        HttpURLConnection conn = (HttpURLConnection) new URL("https://audiotag.info/api").openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(30000);
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        try (OutputStream output = conn.getOutputStream()) {
-            output.write(body.getBytes(StandardCharsets.UTF_8));
-        }
-        return readJsonResponse(conn);
-    }
-
-    private void writeMultipartField(DataOutputStream out, String boundary, String name, String value) throws Exception {
-        out.writeBytes("--" + boundary + "\r\n");
-        out.writeBytes("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n");
-        out.write(value.getBytes(StandardCharsets.UTF_8));
-        out.writeBytes("\r\n");
-    }
-
-    private void writeMultipartFile(DataOutputStream out, String boundary, String name, String filename, File file) throws Exception {
-        out.writeBytes("--" + boundary + "\r\n");
-        out.writeBytes("Content-Disposition: form-data; name=\"" + name + "\"; filename=\"" + filename + "\"\r\n");
-        out.writeBytes("Content-Type: application/octet-stream\r\n\r\n");
-        byte[] buffer = new byte[8192];
-        try (FileInputStream input = new FileInputStream(file)) {
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
-            }
-        }
-        out.writeBytes("\r\n");
-    }
-
-    private JSONObject readJsonResponse(HttpURLConnection conn) throws Exception {
-        int code = conn.getResponseCode();
-        InputStream input = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[4096];
-        int read;
-        while ((read = input.read(buffer)) != -1) {
-            out.write(buffer, 0, read);
-        }
-        conn.disconnect();
-        return new JSONObject(out.toString("UTF-8"));
-    }
-
-    private String parseAudioTagResult(JSONObject result) throws Exception {
-        JSONArray data = result.optJSONArray("data");
-        if (data == null || data.length() == 0) return "Song not found";
-
-        JSONObject best = data.getJSONObject(0);
-        JSONArray tracks = best.optJSONArray("tracks");
-        if (tracks == null || tracks.length() == 0) return "Song not found";
-
-        JSONArray track = tracks.getJSONArray(0);
-        String title = track.optString(0, "");
-        String artist = track.optString(1, "");
-        if (title.isEmpty() && artist.isEmpty()) return "Song not found";
-        if (artist.isEmpty()) return title;
-        if (title.isEmpty()) return artist;
-        return artist + " — " + title;
-    }
 
     private String randomHashfelaBackgroundUrl() {
         return HASHFELA_BACKGROUND_URLS[new Random().nextInt(HASHFELA_BACKGROUND_URLS.length)];
