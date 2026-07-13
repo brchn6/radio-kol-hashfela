@@ -36,8 +36,10 @@ Hebrew compliment.
 - **Now playing metadata.** Reads the station's ICY stream metadata when
   available. Currently the stream reports `Streaming Powered By Multix`,
   not real song title/artist data.
-- **AudioTag shortcut.** Opens AudioTag's web recognizer for manual music
-  identification. No Shazam handoff and no Play Store redirect.
+- **AudioTag identification (dev build).** On the `dev/audiotag` branch,
+  the AudioTag button captures a short stream sample, sends it to AudioTag,
+  and shows `Artist — Track` when AudioTag finds a match. The API key is
+  loaded from local `.env` at build time and is not committed to git.
 - **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
   number with the message: `שיר מעולה, אתם הכי טובים!`
 - **No Google Play Services.** Not even a dependency. This app
@@ -122,7 +124,8 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 - **ICY metadata reader** — polls the stream metadata and shows it in the
   app/notification when the station provides it. Real in-app music
   fingerprinting requires a recognition API/service.
-- **AudioTag link** — opens `https://audiotag.info/` for manual recognition
+- **AudioTag API prototype** — captures ~15 seconds from the stream and uses
+  `action=identify` / `action=get_result` to display the best match in-app
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
 - **~24 KB Android APK** — smaller than most favicons

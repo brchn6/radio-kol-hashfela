@@ -282,14 +282,30 @@ After AudioTag account/API access is available:
 3. Need decide whether to host backend proxy.
 4. Need test whether AudioTag accepts raw AAC+ samples or whether backend transcoding is required.
 
-## Current recommendation
+## Prototype implementation on `dev/audiotag`
 
-Keep the current `dev/audiotag` app as a safe no-key prototype:
+After receiving the exact API documentation and testing the key locally, the branch now includes a direct Android prototype:
 
-- It displays ICY metadata from the station.
-- It has an AudioTag web shortcut.
+1. `build.sh` reads local `.env` if present.
+2. It generates `build/generated-res/values/secrets.xml` with `audiotag_api_key`.
+3. `.env` is ignored by git; `.env.example` is safe to commit.
+4. Pressing **AudioTag** in the app:
+   - captures about 15 seconds from the radio stream using a separate HTTP connection,
+   - uploads the captured AAC sample to `https://audiotag.info/api` with `action=identify`, `apikey`, and `time_len=15`,
+   - polls `action=get_result`,
+   - displays the best `Artist — Track` match in the app.
 
-For real in-app identification, next step is to create/login to an AudioTag account and copy the exact API docs/request format into this repo, then implement the backend proxy first.
+Local API checks passed:
+
+- `action=info` returned success with API version `2.6`.
+- `action=stat` returned the account/free-seconds data.
+- A captured station sample was recognized by AudioTag successfully.
+
+## Security note
+
+This direct prototype works for testing but embeds the API key inside the locally built APK. APKs can be decompiled, so this should not be used for public releases with a private key.
+
+For a public/release-grade implementation, use the backend proxy architecture described above so the AudioTag key stays server-side.
 
 ## Local token handling update
 

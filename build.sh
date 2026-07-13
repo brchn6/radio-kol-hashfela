@@ -31,11 +31,26 @@ mkdir -p "$BUILD_DIR/classes"
 mkdir -p "$BUILD_DIR/dex"
 mkdir -p "$BUILD_DIR/apk"
 mkdir -p "$BUILD_DIR/gen"  # for generated R.java
+mkdir -p "$BUILD_DIR/generated-res/values"  # for local/generated resources
 
 # ─── Step 1: Compile resources → .flat files ────────────────────────────
 echo "=== Compiling resources ==="
+if [ -f "$PROJECT_DIR/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$PROJECT_DIR/.env"
+    set +a
+fi
+python3 - <<PY
+from pathlib import Path
+from xml.sax.saxutils import escape
+key = escape("${AUDIOTAG_API_TOKEN:-}")
+out = Path("$BUILD_DIR/generated-res/values/secrets.xml")
+out.write_text(f'''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="audiotag_api_key">{key}</string>\n</resources>\n''')
+PY
 "$AAPT2" compile -o "$BUILD_DIR/apk/resources.zip" \
-    "$RES_DIR/values/strings.xml"
+    "$RES_DIR"/values/*.xml \
+    "$BUILD_DIR"/generated-res/values/*.xml
 
 # ─── Step 2: Link resources → APK (without dex) + generate R.java ──────
 echo "=== Generating R.java and base APK ==="
