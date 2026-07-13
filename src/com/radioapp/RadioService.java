@@ -42,7 +42,8 @@ public class RadioService extends Service {
     private static final long MAX_RECONNECT_DELAY_MS = 30000;
     private static final long AUTO_IDENTIFY_INITIAL_DELAY_MS = 20000;
     private static final long AUTO_IDENTIFY_INTERVAL_MS = 5 * 60 * 1000;
-    private static final int AUDIOTAG_SAMPLE_BYTES = 128 * 1024;
+    // Raw AAC+ needs a larger captured chunk for AudioTag to estimate duration reliably.
+    private static final int AUDIOTAG_SAMPLE_BYTES = 384 * 1024;
 
     public static final String ACTION_PLAY = "com.radioapp.PLAY";
     public static final String ACTION_STOP = "com.radioapp.STOP";
