@@ -155,6 +155,29 @@ public class MainActivity extends Activity {
         waParams.setMargins(dpToPx(20), 0, 0, dpToPx(40));
         whatsappButton.setLayoutParams(waParams);
 
+        // ─── AudioTag Button — bottom-right ──────────────────────────
+        Button audioTagButton = new Button(this, null, android.R.attr.buttonStyle);
+        audioTagButton.setText("\uD83C\uDFB5  AudioTag");
+        audioTagButton.setTextSize(15);
+        audioTagButton.setTypeface(Typeface.DEFAULT);
+        audioTagButton.setTextColor(Color.WHITE);
+        audioTagButton.setAllCaps(false);
+
+        GradientDrawable audioTagBg = new GradientDrawable();
+        audioTagBg.setShape(GradientDrawable.RECTANGLE);
+        audioTagBg.setCornerRadius(dpToPx(24));
+        audioTagBg.setColor(Color.argb(220, 60, 90, 200));
+        audioTagButton.setBackground(audioTagBg);
+        audioTagButton.setPadding(dpToPx(20), dpToPx(12), dpToPx(24), dpToPx(12));
+        audioTagButton.setOnClickListener(v -> openAudioTag());
+
+        FrameLayout.LayoutParams audioTagParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        audioTagParams.gravity = Gravity.BOTTOM | Gravity.END;
+        audioTagParams.setMargins(0, 0, dpToPx(20), dpToPx(40));
+        audioTagButton.setLayoutParams(audioTagParams);
+
 
         // ─── Root: FrameLayout stacks everything ─────────────────────
         FrameLayout root = new FrameLayout(this);
@@ -168,8 +191,9 @@ public class MainActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT);
         root.addView(centerColumn, centerParams);
 
-        // WhatsApp layered on top
+        // Bottom actions layered on top
         root.addView(whatsappButton, waParams);
+        root.addView(audioTagButton, audioTagParams);
 
         setContentView(root);
 
@@ -255,6 +279,10 @@ public class MainActivity extends Activity {
         }
     }
 
+
+    private void openAudioTag() {
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://audiotag.info/")));
+    }
 
     private String randomHashfelaBackgroundUrl() {
         return HASHFELA_BACKGROUND_URLS[new Random().nextInt(HASHFELA_BACKGROUND_URLS.length)];

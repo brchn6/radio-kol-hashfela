@@ -27,10 +27,11 @@ A fully automatic in-app AudioTag/Shazam-like recognizer **cannot be implemented
 
 Removed the Shazam/Identify handoff UI. It only opened Shazam or the Play Store and could not write the recognized song back inside this app, so it was misleading.
 
-Kept the useful no-key part:
+Kept/added the useful no-key parts:
 
 - In-app ICY metadata reader.
 - Metadata appears in the app/notification when the station provides it.
+- Visible **AudioTag** button that opens `https://audiotag.info/` for manual recognition. This does not pretend to identify songs inside the app.
 
 ## Test status
 

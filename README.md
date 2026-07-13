@@ -16,8 +16,9 @@ The repo contains the original Android app plus a matching iPhone/iOS
 SwiftUI app under `ios/`.
 
 It now includes notification-area Play/Stop controls, Shfela-region
-nature backgrounds, ICY stream metadata display, and a quick WhatsApp
-button for sending the station a pre-filled Hebrew compliment.
+nature backgrounds, ICY stream metadata display, a quick AudioTag web
+button, and a quick WhatsApp button for sending the station a pre-filled
+Hebrew compliment.
 
 ## What makes this different
 
@@ -35,6 +36,8 @@ button for sending the station a pre-filled Hebrew compliment.
 - **Now playing metadata.** Reads the station's ICY stream metadata when
   available. Currently the stream reports `Streaming Powered By Multix`,
   not real song title/artist data.
+- **AudioTag shortcut.** Opens AudioTag's web recognizer for manual music
+  identification. No Shazam handoff and no Play Store redirect.
 - **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
   number with the message: `שיר מעולה, אתם הכי טובים!`
 - **No Google Play Services.** Not even a dependency. This app
@@ -95,7 +98,7 @@ in Xcode and choose your Apple development team for signing.
 
 A random nature photo from Israel's Hashfela/Shfela area is fetched
 when you open the app. The main button is **Play / Stop**, right in
-the center, with a quick WhatsApp button at the bottom.
+the center, with quick AudioTag and WhatsApp buttons at the bottom.
 
 <img src="mockup.svg" alt="App mockup" width="320">
 
@@ -119,6 +122,7 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 - **ICY metadata reader** — polls the stream metadata and shows it in the
   app/notification when the station provides it. Real in-app music
   fingerprinting requires a recognition API/service.
+- **AudioTag link** — opens `https://audiotag.info/` for manual recognition
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
 - **~24 KB Android APK** — smaller than most favicons
