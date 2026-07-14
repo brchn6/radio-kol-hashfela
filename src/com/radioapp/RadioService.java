@@ -6,15 +6,20 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
-import android.media.AudioAttributes;
-import android.media.MediaPlayer;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
+
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.ExoPlayer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -28,42 +33,24 @@ public class RadioService extends Service {
     private static final int NOTIF_ID = 1001;
     private static final String TAG = "RadioService";
 
-    private static final long BASE_RECONNECT_DELAY_MS = 2000;
-    private static final long MAX_RECONNECT_DELAY_MS = 30000;
     public static final String ACTION_PLAY = "com.radioapp.PLAY";
     public static final String ACTION_STOP = "com.radioapp.STOP";
     public static final String ACTION_METADATA_UPDATE = "com.radioapp.METADATA_UPDATE";
     public static final String EXTRA_METADATA = "metadata";
 
-    private final Object playerLock = new Object();
-    private final Handler handler = new Handler(Looper.getMainLooper());
-
-    private MediaPlayer mediaPlayer;
+    private ExoPlayer player;
     private MediaSession mediaSession;
-    private boolean shouldKeepPlaying = false;
-    private boolean isPreparing = false;
-    private boolean isPlaying = false;
     private boolean metadataFetchInProgress = false;
-    private int reconnectAttempt = 0;
     private String currentMetadata = "";
 
-    private final Runnable reconnectRunnable = () -> {
-        boolean shouldStart;
-        synchronized (playerLock) {
-            shouldStart = shouldKeepPlaying && mediaPlayer == null;
-        }
-        if (shouldStart) {
-            Log.i(TAG, "Retrying radio stream");
-            startPlayback();
-        }
-    };
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final Runnable metadataRunnable = new Runnable() {
         @Override
         public void run() {
             boolean shouldFetch;
-            synchronized (playerLock) {
-                shouldFetch = shouldKeepPlaying && isPlaying && !metadataFetchInProgress;
+            synchronized (this) {
+                shouldFetch = isActuallyPlaying() && !metadataFetchInProgress;
                 if (shouldFetch) metadataFetchInProgress = true;
             }
 
@@ -75,20 +62,60 @@ public class RadioService extends Service {
                             updateMetadata(metadata.trim());
                         }
                     } finally {
-                        synchronized (playerLock) {
+                        synchronized (this) {
                             metadataFetchInProgress = false;
                         }
                     }
                 }, "IcyMetadataReader").start();
             }
 
-            synchronized (playerLock) {
-                if (shouldKeepPlaying) {
-                    handler.postDelayed(this, 30000);
-                }
+            handler.postDelayed(this, 30000);
+        }
+    };
+
+    private boolean isActuallyPlaying() {
+        return player != null && player.getPlaybackState() == Player.STATE_READY && player.getPlayWhenReady();
+    }
+
+    // ─── Player listener ──────────────────────────────────────────────────
+
+    private final Player.Listener playerListener = new Player.Listener() {
+        @Override
+        public void onPlaybackStateChanged(int playbackState) {
+            switch (playbackState) {
+                case Player.STATE_READY:
+                    Log.i(TAG, "ExoPlayer ready — streaming");
+                    updateNotification(currentMetadata.isEmpty() ? "Now Playing" : currentMetadata, true);
+                    updatePlaybackState(true);
+                    handler.removeCallbacks(metadataRunnable);
+                    handler.post(metadataRunnable);
+                    break;
+                case Player.STATE_BUFFERING:
+                    Log.i(TAG, "ExoPlayer buffering");
+                    updateNotification("Buffering…", true);
+                    break;
+                case Player.STATE_ENDED:
+                    Log.w(TAG, "Stream ended unexpectedly");
+                    handleUnexpectedStop();
+                    break;
+            }
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+            Log.e(TAG, "ExoPlayer error: " + error.getErrorCodeName() + " — " + error.getMessage());
+            handleUnexpectedStop();
+        }
+
+        @Override
+        public void onIsPlayingChanged(boolean isPlaying) {
+            if (isPlaying) {
+                Log.i(TAG, "ExoPlayer is playing");
             }
         }
     };
+
+    // ─── Lifecycle ────────────────────────────────────────────────────────
 
     @Override
     public void onCreate() {
@@ -101,28 +128,23 @@ public class RadioService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
-
         if (ACTION_STOP.equals(action)) {
             stopPlaybackByUser();
             return START_NOT_STICKY;
         }
 
-        synchronized (playerLock) {
-            shouldKeepPlaying = true;
-            reconnectAttempt = 0;
-        }
         startPlayback();
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
-        handler.removeCallbacks(reconnectRunnable);
         handler.removeCallbacks(metadataRunnable);
-        synchronized (playerLock) {
-            shouldKeepPlaying = false;
+        if (player != null) {
+            player.stop();
+            player.release();
+            player = null;
         }
-        releaseCurrentPlayer();
         if (mediaSession != null) {
             mediaSession.setActive(false);
             mediaSession.release();
@@ -136,232 +158,76 @@ public class RadioService extends Service {
         return null;
     }
 
-    // ─── MediaSession ─────────────────────────────────────────────────────
-
-    private void createMediaSession() {
-        mediaSession = new MediaSession(this, "RadioKolHashfela");
-        mediaSession.setFlags(
-                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
-                        | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
-        mediaSession.setCallback(new MediaSession.Callback() {
-            @Override
-            public void onPlay() {
-                synchronized (playerLock) {
-                    shouldKeepPlaying = true;
-                    reconnectAttempt = 0;
-                }
-                startPlayback();
-            }
-
-            @Override
-            public void onPause() {
-                stopPlaybackByUser();
-            }
-
-            @Override
-            public void onStop() {
-                stopPlaybackByUser();
-            }
-        });
-        mediaSession.setActive(true);
-        updatePlaybackState(false);
-    }
-
-    private void updatePlaybackState(boolean playing) {
-        if (mediaSession == null) return;
-        int state = playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
-        long actions = PlaybackState.ACTION_PLAY
-                | PlaybackState.ACTION_PAUSE
-                | PlaybackState.ACTION_STOP;
-        PlaybackState playbackState = new PlaybackState.Builder()
-                .setActions(actions)
-                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? 1.0f : 0f)
-                .build();
-        mediaSession.setPlaybackState(playbackState);
-    }
-
-    // ─── MediaPlayer ──────────────────────────────────────────────────────
+    // ─── Playback ─────────────────────────────────────────────────────────
 
     private void startPlayback() {
-        MediaPlayer player;
-
-        synchronized (playerLock) {
-            shouldKeepPlaying = true;
-            if (mediaPlayer != null) {
-                updateNotification(isPlaying ? "Now Playing" : "Connecting…", true);
-                updatePlaybackState(isPlaying);
-                return;
-            }
-
-            player = new MediaPlayer();
-            mediaPlayer = player;
-            isPreparing = true;
-            isPlaying = false;
+        if (player != null) {
+            if (isActuallyPlaying()) return;
+            // Reuse existing player — just start it
+            player.prepare();
+            player.play();
+            return;
         }
 
-        handler.removeCallbacks(reconnectRunnable);
-        updateNotification("Connecting…", true);
-        updatePlaybackState(false);
-        Log.i(TAG, "Starting radio stream");
+        Log.i(TAG, "Starting ExoPlayer");
 
-        player.setAudioAttributes(new AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .build());
+        DefaultHttpDataSource.Factory dataSourceFactory = new DefaultHttpDataSource.Factory()
+                .setUserAgent("RadioKolHashfela/1.0")
+                .setConnectTimeoutMs(8000)
+                .setReadTimeoutMs(30000)
+                .setAllowCrossProtocolRedirects(true);
 
-        player.setOnPreparedListener(mp -> {
-            boolean started = false;
-            boolean stalePlayer = false;
-            synchronized (playerLock) {
-                if (mp != mediaPlayer || !shouldKeepPlaying) {
-                    stalePlayer = true;
-                } else {
-                    isPreparing = false;
-                    try {
-                        mp.start();
-                        isPlaying = true;
-                        reconnectAttempt = 0;
-                        started = true;
-                    } catch (IllegalStateException e) {
-                        Log.e(TAG, "Failed to start prepared player", e);
-                        mediaPlayer = null;
-                        isPreparing = false;
-                        isPlaying = false;
-                    }
-                }
-            }
+        player = new ExoPlayer.Builder(this)
+                .setMediaSourceFactory(new androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory))
+                .build();
 
-            if (stalePlayer) {
-                safeRelease(mp);
-                return;
-            }
-            if (!started) {
-                safeRelease(mp);
-                scheduleReconnect("Error playing");
-                return;
-            }
-
-            Log.i(TAG, "Radio stream is playing");
-            updateNotification(currentMetadata.isEmpty() ? "Now Playing" : currentMetadata, true);
-            updatePlaybackState(true);
-            scheduleMetadataUpdates();
-        });
-
-        player.setOnErrorListener((mp, what, extra) -> {
-            synchronized (playerLock) {
-                if (mp != mediaPlayer) return true;
-            }
-            Log.e(TAG, "MediaPlayer error: what=" + what + " extra=" + extra);
-            handleUnexpectedStop(mp, "Stream interrupted");
-            return true;
-        });
-
-        player.setOnCompletionListener(mp -> {
-            synchronized (playerLock) {
-                if (mp != mediaPlayer) return;
-            }
-            Log.w(TAG, "Live stream completed unexpectedly");
-            handleUnexpectedStop(mp, "Stream ended");
-        });
-
-        player.setOnInfoListener((mp, what, extra) -> {
-            synchronized (playerLock) {
-                if (mp != mediaPlayer) return true;
-            }
-            if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START) {
-                Log.i(TAG, "Buffering started");
-                updateNotification("Buffering…", true);
-            } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
-                Log.i(TAG, "Buffering ended");
-                updateNotification("Now Playing", true);
-            }
-            return false;
-        });
-
-        try {
-            player.setDataSource(getString(R.string.radio_url));
-            player.prepareAsync();
-        } catch (IOException | IllegalStateException e) {
-            Log.e(TAG, "Failed to prepare stream", e);
-            boolean currentPlayer;
-            synchronized (playerLock) {
-                currentPlayer = player == mediaPlayer;
-                if (currentPlayer) {
-                    mediaPlayer = null;
-                    isPreparing = false;
-                    isPlaying = false;
-                }
-            }
-            safeRelease(player);
-            if (currentPlayer) {
-                scheduleReconnect("Connection failed");
-            }
-        }
+        player.addListener(playerListener);
+        player.setMediaItem(MediaItem.fromUri(Uri.parse(getString(R.string.radio_url))));
+        player.setPlayWhenReady(true);
+        player.prepare();
     }
 
     private void stopPlaybackByUser() {
         Log.i(TAG, "Stopping playback by user request");
-        handler.removeCallbacks(reconnectRunnable);
         handler.removeCallbacks(metadataRunnable);
-        synchronized (playerLock) {
-            shouldKeepPlaying = false;
-            reconnectAttempt = 0;
-            currentMetadata = "";
+        if (player != null) {
+            player.stop();
+            player.clearMediaItems();
         }
-        releaseCurrentPlayer();
+        currentMetadata = "";
         updateNotification("Stopped", false);
-    }
-
-    private void handleUnexpectedStop(MediaPlayer stoppedPlayer, String status) {
-        boolean retry;
-        synchronized (playerLock) {
-            if (stoppedPlayer != mediaPlayer) return;
-            retry = shouldKeepPlaying;
-        }
-
-        releaseCurrentPlayer();
-        if (retry) {
-            scheduleReconnect(status);
-        } else {
-            updateNotification("Stopped", false);
-        }
-    }
-
-    private void scheduleReconnect(String reason) {
-        long delayMs;
-        synchronized (playerLock) {
-            if (!shouldKeepPlaying) {
-                updateNotification(reason, false);
-                updatePlaybackState(false);
-                return;
-            }
-            delayMs = Math.min(
-                    BASE_RECONNECT_DELAY_MS * (1L << Math.min(reconnectAttempt, 4)),
-                    MAX_RECONNECT_DELAY_MS);
-            reconnectAttempt++;
-        }
-
-        long delaySeconds = Math.max(1, delayMs / 1000);
-        Log.w(TAG, reason + "; reconnecting in " + delaySeconds + "s");
-        updateNotification(reason + " — reconnecting in " + delaySeconds + "s", true);
         updatePlaybackState(false);
-        handler.removeCallbacks(reconnectRunnable);
-        handler.postDelayed(reconnectRunnable, delayMs);
     }
 
-    private void scheduleMetadataUpdates() {
-        handler.removeCallbacks(metadataRunnable);
-        handler.post(metadataRunnable);
+    private void handleUnexpectedStop() {
+        // ExoPlayer handles its own reconnection internally.
+        // If we got here, something serious happened — try again.
+        Log.i(TAG, "Handling unexpected stop, will retry");
+        if (player != null) {
+            player.stop();
+            player.clearMediaItems();
+        }
+        updateNotification("Reconnecting…", true);
+        updatePlaybackState(false);
+        handler.postDelayed(() -> {
+            if (player != null) {
+                player.setMediaItem(MediaItem.fromUri(Uri.parse(getString(R.string.radio_url))));
+                player.prepare();
+                player.setPlayWhenReady(true);
+            } else {
+                startPlayback();
+            }
+        }, 1000);
     }
+
+    // ─── Metadata ─────────────────────────────────────────────────────────
 
     private void updateMetadata(String metadata) {
         if (isGenericMetadata(metadata)) {
             Log.i(TAG, "Ignoring generic stream metadata: " + metadata);
             return;
         }
-        synchronized (playerLock) {
-            currentMetadata = metadata;
-        }
+        currentMetadata = metadata;
         Log.i(TAG, "Stream metadata: " + metadata);
         broadcastMetadata(metadata);
         updateNotification(metadata, true);
@@ -443,34 +309,47 @@ public class RadioService extends Service {
         return metadata.substring(start, end).replace("\u0000", "").trim();
     }
 
-    private void releaseCurrentPlayer() {
-        MediaPlayer playerToRelease;
-        synchronized (playerLock) {
-            playerToRelease = mediaPlayer;
-            mediaPlayer = null;
-            isPreparing = false;
-            isPlaying = false;
-        }
+    // ─── MediaSession ─────────────────────────────────────────────────────
 
-        safeRelease(playerToRelease);
+    private void createMediaSession() {
+        mediaSession = new MediaSession(this, "RadioKolHashfela");
+        mediaSession.setFlags(
+                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
+                        | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession.setCallback(new MediaSession.Callback() {
+            @Override
+            public void onPlay() {
+                startPlayback();
+            }
+
+            @Override
+            public void onPause() {
+                stopPlaybackByUser();
+            }
+
+            @Override
+            public void onStop() {
+                stopPlaybackByUser();
+            }
+        });
+        mediaSession.setActive(true);
         updatePlaybackState(false);
     }
 
-    private void safeRelease(MediaPlayer player) {
-        if (player == null) return;
-        player.setOnPreparedListener(null);
-        player.setOnErrorListener(null);
-        player.setOnCompletionListener(null);
-        player.setOnInfoListener(null);
-        try {
-            if (player.isPlaying()) player.stop();
-        } catch (IllegalStateException ignored) {
-            // Player may be preparing, stopped, or already released after an error.
-        }
-        player.release();
+    private void updatePlaybackState(boolean playing) {
+        if (mediaSession == null) return;
+        int state = playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
+        long actions = PlaybackState.ACTION_PLAY
+                | PlaybackState.ACTION_PAUSE
+                | PlaybackState.ACTION_STOP;
+        PlaybackState playbackState = new PlaybackState.Builder()
+                .setActions(actions)
+                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? 1.0f : 0f)
+                .build();
+        mediaSession.setPlaybackState(playbackState);
     }
 
-    // ─── Notification helpers ─────────────────────────────────────────────
+    // ─── Notification ─────────────────────────────────────────────────────
 
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(

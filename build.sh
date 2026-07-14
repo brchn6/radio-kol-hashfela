@@ -55,8 +55,9 @@ echo "=== Generating R.java and base APK ==="
 
 # ─── Step 3: Compile Java sources (including generated R.java) ─────────
 echo "=== Compiling Java sources ==="
+LIBS="$PROJECT_DIR/libs/media3-common.jar:$PROJECT_DIR/libs/media3-exoplayer.jar:$PROJECT_DIR/libs/media3-datasource.jar:$PROJECT_DIR/libs/media3-decoder.jar:$PROJECT_DIR/libs/media3-extractor.jar:$PROJECT_DIR/libs/guava.jar:$PROJECT_DIR/libs/failureaccess.jar"
 javac -source 8 -target 8 \
-    -cp "$ANDROID_JAR" \
+    -cp "$ANDROID_JAR:$LIBS" \
     -d "$BUILD_DIR/classes" \
     "$SRC_DIR/$PKG_PATH/MainActivity.java" \
     "$SRC_DIR/$PKG_PATH/RadioService.java" \
@@ -65,9 +66,12 @@ javac -source 8 -target 8 \
 # ─── Step 4: Convert to DEX ──────────────────────────────────────────────
 echo "=== Converting to DEX ==="
 # Find all .class files recursively
-find "$BUILD_DIR/classes" -name '*.class' -print0 | xargs -0 \
-    "$D8" --lib "$ANDROID_JAR" \
-    --output "$BUILD_DIR/dex"
+find "$BUILD_DIR/classes" -name '*.class' -print0 > /tmp/class_files.txt
+# Include library JARs for dexing
+find "$PROJECT_DIR/libs" -name '*.jar' -print0 >> /tmp/class_files.txt
+xargs -0 "$D8" --lib "$ANDROID_JAR" \
+    --output "$BUILD_DIR/dex" < /tmp/class_files.txt
+rm -f /tmp/class_files.txt
 
 # ─── Step 5: Inject DEX into APK ────────────────────────────────────────
 echo "=== Adding DEX to APK ==="

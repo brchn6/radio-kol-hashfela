@@ -121,16 +121,16 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
   notification shade
 - **iOS background audio + Now Playing controls** — supports Control Center,
   lock screen, and headset controls
-- **ICY metadata reader** — polls the stream metadata and shows it in the
-  app/notification when the station provides it. Real in-app music
-  fingerprinting requires a recognition API/service.
+- **ExoPlayer (Media3) engine** — Google's recommended player (same engine
+  as YouTube Music and Spotify). Handles buffering and network drops
+  without glitching.
 - **ICY metadata reader** — polls the stream metadata and shows it in the
   app/notification when the station provides it
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
-- **~24 KB Android APK** — smaller than most favicons
+- **~2.3 MB Android APK** — Media3 (ExoPlayer) bundled for reliable streaming
 - Android built with `aapt2` + `javac` + `d8` + `apksigner` — no Gradle,
-  no IDE, no external libraries
+  no IDE. Media3 JARs bundled in `libs/`.
 - iOS builds with Xcode / `xcodebuild`
 
 ## Product paths

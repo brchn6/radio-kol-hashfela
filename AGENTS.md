@@ -38,10 +38,11 @@ with command-line tools (no Gradle, no IDE, no external deps).
 | File | What it does |
 |------|-------------|
 | `src/…/MainActivity.java` | UI layout, play/stop toggle, background image loading, metadata display |
-| `src/…/RadioService.java` | MediaPlayer + foreground service + notification + auto-reconnect + ICY metadata reader |
+| `src/…/RadioService.java` | ExoPlayer (Media3) + foreground service + notification + auto-reconnect + ICY metadata reader |
 | `AndroidManifest.xml` | Permissions (INTERNET, FOREGROUND_SERVICE, POST_NOTIFICATIONS) |
 | `res/values/strings.xml` | Strings (stream URL, app name, labels) |
-| `build.sh` | Build script — compiles, dexes, packages, signs (no secrets baked in) |
+| `build.sh` | Build script — compiles, dexes, packages, signs |
+| `libs/` | Bundled Media3 (ExoPlayer) JARs — no Gradle needed, play works without network drops |
 | `logo.png` | Station logo (scraped from 1036kh.com) |
 | `mockup.svg` | Phone mockup for README |
 
@@ -55,15 +56,30 @@ with command-line tools (no Gradle, no IDE, no external deps).
 That's it. No camera, mic, location, contacts, storage, or phone
 state.
 
+## Player engine
+
+Uses **ExoPlayer (Media3 1.10.0)** — Google's recommended player, used by
+YouTube Music, Spotify, and every real-world radio app. Handles buffering
+and network drops (biking, cell handoffs) seamlessly without glitching.
+
+Media3 JARs are bundled in `libs/` (no Gradle needed):
+- `media3-common` — core types
+- `media3-exoplayer` — the player engine
+- `media3-datasource` — HTTP streaming
+- `media3-decoder` — audio decoding
+- `media3-extractor` — format detection (AAC, MP3, etc.)
+- `guava` — Google core libs (Media3 dependency)
+- `failureaccess` — Guava utility (Android variant)
+
 ## Product paths
 
 There are two product paths defined in this repo:
 
 ### Minimal (main — current)
-A clean, zero-dependency radio player. No song recognition, no API
-keys, no network calls beyond streaming and Wikimedia Commons images.
+A clean radio player with no song recognition, no API keys, no
+network calls beyond streaming and Wikimedia Commons images.
 Track names come only from ICY metadata if the station ever sends
-real song info. ~24 KB APK, builds entirely offline.
+real song info. ~2.3 MB APK.
 
 ### Maximal (backend-proxy experiment — documented in `docs/`)
 Add song recognition by running a local backend proxy:
