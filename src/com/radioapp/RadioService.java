@@ -6,36 +6,21 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.util.Base64;
 import android.util.Log;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
 import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 
 public class RadioService extends Service {
 
@@ -45,18 +30,10 @@ public class RadioService extends Service {
 
     private static final long BASE_RECONNECT_DELAY_MS = 2000;
     private static final long MAX_RECONNECT_DELAY_MS = 30000;
-    private static final long AUTO_IDENTIFY_INITIAL_DELAY_MS = 5000;
-    private static final long AUTO_IDENTIFY_INTERVAL_MS = 5 * 60 * 1000;
-    // Raw AAC+ needs a larger captured chunk for AudioTag to estimate duration reliably.
-    private static final int AUDIOTAG_SAMPLE_BYTES = 384 * 1024;
-
     public static final String ACTION_PLAY = "com.radioapp.PLAY";
     public static final String ACTION_STOP = "com.radioapp.STOP";
     public static final String ACTION_METADATA_UPDATE = "com.radioapp.METADATA_UPDATE";
     public static final String EXTRA_METADATA = "metadata";
-
-    private static final String PREFS_NAME = "radio_prefs";
-    private static final String PREF_TRACK_HISTORY = "track_history_json";
 
     private final Object playerLock = new Object();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -67,10 +44,8 @@ public class RadioService extends Service {
     private boolean isPreparing = false;
     private boolean isPlaying = false;
     private boolean metadataFetchInProgress = false;
-    private boolean audioTagInProgress = false;
     private int reconnectAttempt = 0;
     private String currentMetadata = "";
-    private String lastIdentifiedTrack = "";
 
     private final Runnable reconnectRunnable = () -> {
         boolean shouldStart;
@@ -115,43 +90,6 @@ public class RadioService extends Service {
         }
     };
 
-    private final Runnable audioTagRunnable = new Runnable() {
-        @Override
-        public void run() {
-            String apiKey = getString(R.string.audiotag_api_key).trim();
-            boolean shouldIdentify;
-            synchronized (playerLock) {
-                shouldIdentify = shouldKeepPlaying && isPlaying && !audioTagInProgress && !apiKey.isEmpty();
-                if (shouldIdentify) audioTagInProgress = true;
-            }
-
-            if (!shouldIdentify) {
-                scheduleNextAudioTagRun(AUTO_IDENTIFY_INTERVAL_MS);
-                return;
-            }
-
-            new Thread(() -> {
-                try {
-                    Log.i(TAG, "Auto AudioTag identification started");
-                    broadcastMetadata("Identifying song…");
-                    updateNotification("Identifying song…", true);
-                    File sample = captureStreamSampleForAudioTag();
-                    String result = identifyWithAudioTag(sample, apiKey);
-                    if (result != null && !result.trim().isEmpty()) {
-                        updateRecognizedTrack(result.trim());
-                    }
-                } catch (Exception e) {
-                    Log.w(TAG, "Auto AudioTag identification failed", e);
-                } finally {
-                    synchronized (playerLock) {
-                        audioTagInProgress = false;
-                    }
-                    scheduleNextAudioTagRun(AUTO_IDENTIFY_INTERVAL_MS);
-                }
-            }, "AudioTagAutoIdentify").start();
-        }
-    };
-
     @Override
     public void onCreate() {
         super.onCreate();
@@ -181,7 +119,6 @@ public class RadioService extends Service {
     public void onDestroy() {
         handler.removeCallbacks(reconnectRunnable);
         handler.removeCallbacks(metadataRunnable);
-        handler.removeCallbacks(audioTagRunnable);
         synchronized (playerLock) {
             shouldKeepPlaying = false;
         }
@@ -305,10 +242,9 @@ public class RadioService extends Service {
             }
 
             Log.i(TAG, "Radio stream is playing");
-            updateNotification(currentMetadata.isEmpty() ? "Identifying song…" : currentMetadata, true);
+            updateNotification(currentMetadata.isEmpty() ? "Now Playing" : currentMetadata, true);
             updatePlaybackState(true);
             scheduleMetadataUpdates();
-            scheduleNextAudioTagRun(AUTO_IDENTIFY_INITIAL_DELAY_MS);
         });
 
         player.setOnErrorListener((mp, what, extra) -> {
@@ -367,7 +303,6 @@ public class RadioService extends Service {
         Log.i(TAG, "Stopping playback by user request");
         handler.removeCallbacks(reconnectRunnable);
         handler.removeCallbacks(metadataRunnable);
-        handler.removeCallbacks(audioTagRunnable);
         synchronized (playerLock) {
             shouldKeepPlaying = false;
             reconnectAttempt = 0;
@@ -432,17 +367,6 @@ public class RadioService extends Service {
         updateNotification(metadata, true);
     }
 
-    private void updateRecognizedTrack(String track) {
-        synchronized (playerLock) {
-            lastIdentifiedTrack = track;
-            currentMetadata = track;
-        }
-        saveTrackToHistory(track);
-        Log.i(TAG, "AudioTag recognized: " + track);
-        broadcastMetadata(track);
-        updateNotification(track, true);
-    }
-
     private void broadcastMetadata(String metadata) {
         Intent intent = new Intent(ACTION_METADATA_UPDATE);
         intent.setPackage(getPackageName());
@@ -455,36 +379,6 @@ public class RadioService extends Service {
         return normalized.isEmpty()
                 || "streaming powered by multix".equals(normalized)
                 || "radio kol hashfela".equals(normalized);
-    }
-
-    private boolean isRealTrackName(String track) {
-        if (track == null) return false;
-        String normalized = track.trim().toLowerCase();
-        return !normalized.isEmpty()
-                && !"song not found".equals(normalized)
-                && !normalized.startsWith("audiotag")
-                && !isGenericMetadata(track);
-    }
-
-    private void saveTrackToHistory(String track) {
-        if (!isRealTrackName(track)) return;
-        try {
-            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            JSONArray oldTracks = new JSONArray(prefs.getString(PREF_TRACK_HISTORY, "[]"));
-            JSONArray newTracks = new JSONArray();
-            newTracks.put(track);
-
-            for (int i = 0; i < oldTracks.length() && newTracks.length() < 5; i++) {
-                String existing = oldTracks.optString(i, "").trim();
-                if (!existing.isEmpty() && !existing.equals(track)) {
-                    newTracks.put(existing);
-                }
-            }
-
-            prefs.edit().putString(PREF_TRACK_HISTORY, newTracks.toString()).apply();
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to save track history", e);
-        }
     }
 
     private String fetchIcyMetadata() {
@@ -547,158 +441,6 @@ public class RadioService extends Service {
         int end = metadata.indexOf("';", start);
         if (end < 0) end = metadata.length();
         return metadata.substring(start, end).replace("\u0000", "").trim();
-    }
-
-    private void scheduleNextAudioTagRun(long delayMs) {
-        synchronized (playerLock) {
-            if (!shouldKeepPlaying) return;
-        }
-        handler.removeCallbacks(audioTagRunnable);
-        handler.postDelayed(audioTagRunnable, delayMs);
-    }
-
-    private File captureStreamSampleForAudioTag() throws Exception {
-        File sample = new File(getCacheDir(), "audiotag-sample.aac");
-        URL url = new URL(getString(R.string.radio_url));
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(8000);
-        conn.setReadTimeout(15000);
-        conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-        conn.connect();
-
-        byte[] buffer = new byte[8192];
-        int total = 0;
-        try (InputStream input = conn.getInputStream();
-             FileOutputStream output = new FileOutputStream(sample)) {
-            while (total < AUDIOTAG_SAMPLE_BYTES) {
-                int read = input.read(buffer, 0, Math.min(buffer.length, AUDIOTAG_SAMPLE_BYTES - total));
-                if (read < 0) break;
-                output.write(buffer, 0, read);
-                total += read;
-            }
-        } finally {
-            conn.disconnect();
-        }
-
-        if (total < 48_000) {
-            throw new IOException("Could not capture enough audio for AudioTag");
-        }
-        return sample;
-    }
-
-    private String identifyWithAudioTag(File sample, String apiKey) throws Exception {
-        JSONObject start = postAudioTagIdentify(sample, apiKey);
-        if (!start.optBoolean("success", false)) {
-            throw new IOException(start.optString("error", "AudioTag identify failed"));
-        }
-
-        String token = start.optString("token", "");
-        if (token.isEmpty()) {
-            throw new IOException("AudioTag did not return a token");
-        }
-
-        for (int i = 0; i < 60; i++) {
-            Thread.sleep(1000);
-            JSONObject result = postAudioTagResult(token, apiKey);
-            if (!result.optBoolean("success", false)) {
-                throw new IOException(result.optString("error", "AudioTag result failed"));
-            }
-
-            String state = result.optString("result", "wait");
-            if ("wait".equals(state)) continue;
-            if ("not found".equals(state)) return "Song not found";
-            if ("found".equals(state)) return parseAudioTagResult(result);
-            return "AudioTag: " + state;
-        }
-
-        return "AudioTag timed out";
-    }
-
-    private JSONObject postAudioTagIdentify(File sample, String apiKey) throws Exception {
-        String boundary = "----RadioKolHashfela" + System.currentTimeMillis();
-        HttpURLConnection conn = (HttpURLConnection) new URL("https://audiotag.info/api").openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(60000);
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-
-        try (DataOutputStream out = new DataOutputStream(conn.getOutputStream())) {
-            writeMultipartField(out, boundary, "action", "identify");
-            writeMultipartField(out, boundary, "apikey", apiKey);
-            writeMultipartField(out, boundary, "time_len", "20");
-            writeMultipartFile(out, boundary, "file", "radio-sample.aac", sample);
-            out.writeBytes("--" + boundary + "--\r\n");
-        }
-
-        return readJsonResponse(conn);
-    }
-
-    private JSONObject postAudioTagResult(String token, String apiKey) throws Exception {
-        String body = "action=get_result&apikey=" + Uri.encode(apiKey) + "&token=" + Uri.encode(token);
-        HttpURLConnection conn = (HttpURLConnection) new URL("https://audiotag.info/api").openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(30000);
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-        conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        try (OutputStream output = conn.getOutputStream()) {
-            output.write(body.getBytes(StandardCharsets.UTF_8));
-        }
-        return readJsonResponse(conn);
-    }
-
-    private void writeMultipartField(DataOutputStream out, String boundary, String name, String value) throws IOException {
-        out.writeBytes("--" + boundary + "\r\n");
-        out.writeBytes("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n");
-        out.write(value.getBytes(StandardCharsets.UTF_8));
-        out.writeBytes("\r\n");
-    }
-
-    private void writeMultipartFile(DataOutputStream out, String boundary, String name, String filename, File file) throws IOException {
-        out.writeBytes("--" + boundary + "\r\n");
-        out.writeBytes("Content-Disposition: form-data; name=\"" + name + "\"; filename=\"" + filename + "\"\r\n");
-        out.writeBytes("Content-Type: application/octet-stream\r\n\r\n");
-        byte[] buffer = new byte[8192];
-        try (FileInputStream input = new FileInputStream(file)) {
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
-            }
-        }
-        out.writeBytes("\r\n");
-    }
-
-    private JSONObject readJsonResponse(HttpURLConnection conn) throws Exception {
-        int code = conn.getResponseCode();
-        InputStream input = code >= 400 ? conn.getErrorStream() : conn.getInputStream();
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buffer = new byte[4096];
-        int read;
-        while ((read = input.read(buffer)) != -1) {
-            out.write(buffer, 0, read);
-        }
-        conn.disconnect();
-        return new JSONObject(out.toString("UTF-8"));
-    }
-
-    private String parseAudioTagResult(JSONObject result) throws Exception {
-        JSONArray data = result.optJSONArray("data");
-        if (data == null || data.length() == 0) return "Song not found";
-
-        JSONObject best = data.getJSONObject(0);
-        JSONArray tracks = best.optJSONArray("tracks");
-        if (tracks == null || tracks.length() == 0) return "Song not found";
-
-        JSONArray track = tracks.getJSONArray(0);
-        String title = track.optString(0, "");
-        String artist = track.optString(1, "");
-        if (title.isEmpty() && artist.isEmpty()) return "Song not found";
-        if (artist.isEmpty()) return title;
-        if (title.isEmpty()) return artist;
-        return artist + " — " + title;
     }
 
     private void releaseCurrentPlayer() {

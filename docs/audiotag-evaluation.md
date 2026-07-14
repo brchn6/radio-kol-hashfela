@@ -1,56 +1,71 @@
-# AudioTag integration evaluation
-
-Branch: `dev/audiotag`
+# AudioTag integration evaluation — maximal product reference
 
 ## Goal
 
-Evaluate no-paid/no-API-key song identification for the Android app, using AudioTag where possible, plus the station ICY metadata.
+Evaluate song identification options for the minimal radio app. The
+minimal app itself has **zero** recognition — this doc is the reference
+for adding a backend-driven "maximal" product.
 
-## What was verified
+## ICY metadata (always available, station-dependent)
 
-- `https://audiotag.info/faq` says AudioTag can recognize 10–30 second audio fragments and can recognize direct links.
-- `https://audiotag.info/apisection` says API access exists, but **requires signing up for an account**. It has a free monthly budget, but it is still an authenticated API flow.
-- `https://audiotag.info/xlink` currently says direct-link recognition is **temporarily closed for maintenance** and also uses a human/captcha step.
-- The station stream exposes ICY metadata with `icy-metaint: 16000`, but current metadata is only `Streaming Powered By Multix`, not actual song title/artist.
+The stream exposes ICY metadata (`icy-metaint: 16000`), but currently
+only sends `Streaming Powered By Multix` — not real song info. When
+the station sends real artist/title data, the minimal app displays it
+automatically.
 
-## Conclusion
+## Recognition services evaluated
 
-A fully automatic in-app AudioTag/Shazam-like recognizer **cannot be implemented correctly with no API key/account and no paid service** using AudioTag right now:
+### AudioTag (`audiotag.info`)
 
-1. AudioTag API requires an account/API access.
-2. Public web upload/direct-link flow requires human/captcha interaction.
-3. Direct-link recognition page is currently disabled for maintenance.
-4. Automating/scraping the public web flow would be brittle and likely inappropriate.
-5. Shazam does not provide a public Android intent/API that returns the recognized song title back into this app.
+| Item | Detail |
+|------|--------|
+| **Account needed?** | Yes — free tier: ~10,800 sec/month |
+| **API cost** | Charged by analyzed audio seconds (~50 sec/recognition) |
+| **Prototype status** | Proven. Direct Android call works with API key. ~384 KB AAC+ sample needed (raw AAC+ rejected below that). |
+| **Production path** | API key must stay on a backend proxy, never in the APK |
+| **Quota math** | ~216 recognitions/free period at 50 sec/sample |
+| **Limitation** | No song-change events from station; timer-based polling can lag |
 
-## Decision
+### ShazamIO (`shazamio`)
 
-Removed the Shazam/Identify handoff UI. It only opened Shazam or the Play Store and could not write the recognized song back inside this app, so it was misleading.
+| Item | Detail |
+|------|--------|
+| **Key needed?** | No — reverse-engineered Shazam internal API |
+| **Prototype status** | Works as Python backend (tested externally) |
+| **Production path** | Run as backend proxy, not in APK (needs Python/Rust native deps) |
+| **Notes** | Best option for zero-cost recognition if you run a proxy |
 
-Initial no-key evaluation concluded that the public website could only be used manually.
+### ACRCloud
 
-After API documentation and a key were provided, `dev/audiotag` now contains a direct testing prototype:
+| Item | Detail |
+|------|--------|
+| **Key needed?** | Yes — free tier available |
+| **Prototype status** | Credential plumbing existed in git history; never tested on live stream |
+| **Production path** | Backend proxy like the others |
 
-- In-app ICY metadata reader.
-- Metadata appears in the app/notification when the station provides it.
-- Visible **AudioTag** button that captures a short stream sample, uploads it with `action=identify`, polls `action=get_result`, and displays the best `Artist — Track` result.
+### GitHub `shazam-like` ecosystem
 
-The key is loaded from local `.env` during local builds and is not committed to git. This is acceptable for private testing but not safe for public APK releases.
+Checked `github.com/topics/shazam-like`:
 
-## Test status
+- `SeaDve/Mousai` — uses AudD (needs API token)
+- `aleksey-saenko/MusicRecognizer` / Audile — supports AudD, ACRCloud,
+  and an unofficial Shazam path (native SongRec fingerprint — not a
+  Java-only drop-in)
+- `shazamio/ShazamIO` — best zero-cost option as backend proxy
 
-- Android build passes with `./build.sh`.
+## Recommendation for a maximal product
 
-## UI rollback note
+1. Keep the minimal APK clean (no keys, no recognition code).
+2. Run a separate backend proxy (Python with `shazamio` or a
+   lightweight server with an AudioTag key).
+3. Add a settings toggle or gesture in the app that calls the proxy
+   for recognition when the user wants it.
 
-The visible **AudioTag** button was removed by request. The app currently keeps ICY metadata display only; AudioTag work remains documented on this branch for future backend/proxy integration.
+## What was removed / why
 
-## Automatic mode update
-
-The app now uses AudioTag automatically from `RadioService` with no visible button. It captures a short sample after playback starts and repeats periodically while playing. A live phone test successfully displayed a recognized track.
-
-## Quota / refresh limitation
-
-AudioTag recognition is not continuous. The station does not send song-change events, so automatic mode identifies on a timer. This means track names can lag behind the real radio by up to the configured interval.
-
-The current raw AAC+ capture is ~384 KB because smaller samples failed with `audio is too short`. Treat each recognition as roughly up to ~50 analyzed seconds for quota planning. With 10,800 free seconds, this is approximately 216 recognitions per budget period.
+- **Identify/Shazam button** — only opened Shazam externally, couldn't
+  write results back into the app. Misleading.
+- **Direct AudioTag in APK** — API key extracted from decompiled APK.
+  Fine for local testing, not for release.
+- **Automatic timer-based recognition** — burned quota even when nobody
+  was looking at the app.

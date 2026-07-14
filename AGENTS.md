@@ -31,20 +31,18 @@ with command-line tools (no Gradle, no IDE, no external deps).
 - Streams in a foreground service (`RadioService`) so playback
   continues when the screen is off or other apps are in use
 - Notification with Play/Stop media controls
-- `dev/audiotag` branch: automatic AudioTag recognition using a local
-  `.env` API key at build time; no visible AudioTag button
-- Last playlist/history: stores up to 5 recognized tracks locally and
-  provides a Copy playlist button
+- Track history: stores up to 5 tracks locally and provides a
+  Copy playlist button (populated from ICY metadata)
 
 ## Source files
 
 | File | What it does |
 |------|-------------|
 | `src/…/MainActivity.java` | UI layout, play/stop toggle, background image loading, track history/copy UI |
-| `src/…/RadioService.java` | MediaPlayer + foreground service + notification + auto-reconnect + metadata/AudioTag recognition |
+| `src/…/RadioService.java` | MediaPlayer + foreground service + notification + auto-reconnect + ICY metadata reader |
 | `AndroidManifest.xml` | Permissions (INTERNET, FOREGROUND_SERVICE, POST_NOTIFICATIONS) |
 | `res/values/strings.xml` | Strings (stream URL, app name, labels) |
-| `build.sh` | Build script — compiles, dexes, packages, signs; on `dev/audiotag` reads local `.env` and generates a temporary API-key resource |
+| `build.sh` | Build script — compiles, dexes, packages, signs (no secrets baked in) |
 | `logo.png` | Station logo (scraped from 1036kh.com) |
 | `mockup.svg` | Phone mockup for README |
 
@@ -58,31 +56,33 @@ with command-line tools (no Gradle, no IDE, no external deps).
 That's it. No camera, mic, location, contacts, storage, or phone
 state.
 
-## README structure
+## Product paths
 
+There are two product paths defined in this repo:
+
+### Minimal (main — current)
+A clean, zero-dependency radio player. No song recognition, no API
+keys, no network calls beyond streaming and Wikimedia Commons images.
+Track names come only from ICY metadata if the station ever sends
+real song info. ~24 KB APK, builds entirely offline.
+
+### Maximal (backend-proxy experiment — documented in `docs/`)
+Add song recognition by running a local backend proxy:
+
+| Service | Status | Docs |
+|---------|--------|------|
+| **AudioTag** | Prototype proven on `dev/audiotag` history. API key stays server-side. Free quota ~10,800 seconds/month. | `docs/audiotag-evaluation.md` |
+| **ShazamIO** | Python/Rust backend using reverse-engineered Shazam API. Works well as proxy. | `docs/audiotag-evaluation.md` |
+| **ACRCloud** | Credential plumbing existed in prototype but never tested on live stream. | — |
+
+README structure notes:
 1. Logo (centered, from `logo.png`)
-2. Unofficial disclaimer ("just a listener, not affiliated")
-3. What makes this different (no ads, no creepy permissions, etc.)
-4. Install instructions (download release / build yourself)
+2. Unofficial disclaimer
+3. What makes this different
+4. Install instructions
 5. Mockup image
-6. Tech details
+6. Tech details + product paths
 7. License
-
-## Secrets / AudioTag notes
-
-- Real AudioTag API key must live only in local `.env`:
-  `AUDIOTAG_API_TOKEN=...`
-- `.env` is gitignored. Never commit a real AudioTag key, generated
-  `build/generated-res/values/secrets.xml`, or an APK intended to keep
-  the key private.
-- Current automatic AudioTag recognition captures a relatively large
-  AAC sample (~384 KB, roughly up to ~50 seconds as AudioTag sees it)
-  because smaller raw AAC+ samples were rejected as "audio is too short".
-- With a 10,800-second free budget, assume roughly 216 recognitions per
-  budget period at ~50 seconds/sample. Automatic checks can miss a song
-  change until the next interval; tune interval vs quota carefully.
-- Public-release design should move AudioTag calls to a backend proxy so
-  the key is never embedded in the APK.
 
 ## Common tasks
 

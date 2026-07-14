@@ -35,10 +35,7 @@ button for sending the station a pre-filled Hebrew compliment.
 - **Now playing metadata.** Reads the station's ICY stream metadata when
   available. Currently the stream reports `Streaming Powered By Multix`,
   not real song title/artist data.
-- **Automatic AudioTag recognition (dev build).** The `dev/audiotag` branch
-  identifies the stream automatically in the background. There is no visible
-  AudioTag button; results appear in the app/notification when found.
-- **Last playlist.** Keeps the last 5 recognized tracks on screen and adds
+- **Track history.** Keeps the last 5 tracks on screen and adds
   a **Copy playlist** button to copy them to the clipboard.
 - **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
   number with the message: `שיר מעולה, אתם הכי טובים!`
@@ -124,22 +121,38 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 - **ICY metadata reader** — polls the stream metadata and shows it in the
   app/notification when the station provides it. Real in-app music
   fingerprinting requires a recognition API/service.
-- **Automatic AudioTag API prototype** — when built locally with `.env`,
-  captures a stream sample every few minutes and displays the best
-  `Artist — Track` result; the key is not committed to git
-- **AudioTag quota limitation** — AudioTag charges by analyzed audio seconds.
-  With a 10,800-second free budget and ~50-second captured samples, this is
-  roughly 216 recognitions per free budget period. Automatic recognition may
-  miss a song change until the next scheduled check and should be tuned with
-  quota in mind.
-- **Playlist history** — stores up to 5 recognized tracks locally and lets the
-  user copy the list
+- **Track history** — stores up to 5 tracks locally and lets the
+  user copy the list (populated from ICY metadata)
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
 - **~24 KB Android APK** — smaller than most favicons
 - Android built with `aapt2` + `javac` + `d8` + `apksigner` — no Gradle,
   no IDE, no external libraries
 - iOS builds with Xcode / `xcodebuild`
+
+## Product paths
+
+### Minimal (this branch — `main`)
+A clean radio player with no song recognition, no API keys, no
+network calls beyond the stream itself and Wikimedia background images.
+Builds entirely offline with just the Android SDK. The track history
+works from ICY metadata if the station sends real song info.
+
+### Maximal (recognition via backend proxy)
+Song recognition requires a server-side API key. This repo documents
+the experiments:
+
+| Service | What it needs | Docs |
+|---------|--------------|------|
+| **AudioTag** | API key on a backend proxy. Free quota ~10,800 sec/month. Prototype proven. | `docs/audiotag-evaluation.md` |
+| **ShazamIO** | Python backend (reverse-engineered Shazam API). No official key needed. | `docs/audiotag-evaluation.md` |
+| **ACRCloud** | API key + SDK. Credential plumbing exists in git history. | — |
+
+The minimal app never embeds recognition credentials. For a production
+recognition feature, all API calls go through your own backend so keys
+stay server-side.
+
+---
 
 ## License
 

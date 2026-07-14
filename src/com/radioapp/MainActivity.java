@@ -272,7 +272,7 @@ public class MainActivity extends Activity {
         } else {
             startRadioService(RadioService.ACTION_PLAY);
             toggleButton.setText("\u23F8");   // ⏸
-            statusText.setText("Identifying song…");
+            statusText.setText("Now Playing");
             isPlaying = true;
         }
     }
@@ -389,8 +389,6 @@ public class MainActivity extends Activity {
         String normalized = track.trim().toLowerCase();
         return !normalized.isEmpty()
                 && !"song not found".equals(normalized)
-                && !normalized.startsWith("audiotag")
-                && !"identifying song…".equals(normalized)
                 && !"streaming powered by multix".equals(normalized)
                 && !"radio kol hashfela".equals(normalized);
     }
