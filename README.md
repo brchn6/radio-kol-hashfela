@@ -19,6 +19,9 @@ It now includes notification-area Play/Stop controls, Shfela-region
 nature backgrounds, ICY stream metadata display, and a quick WhatsApp
 button for sending the station a pre-filled Hebrew compliment.
 
+Track names come from ICY metadata when the station sends them;
+the app does not do any song recognition.
+
 ## What makes this different
 
 - **No ads.** The stream plays directly — no browser, no pop-ups,
@@ -35,8 +38,8 @@ button for sending the station a pre-filled Hebrew compliment.
 - **Now playing metadata.** Reads the station's ICY stream metadata when
   available. Currently the stream reports `Streaming Powered By Multix`,
   not real song title/artist data.
-- **Track history.** Keeps the last 5 tracks on screen and adds
-  a **Copy playlist** button to copy them to the clipboard.
+- **Now Playing metadata.** Reads the station's ICY stream metadata when
+  available and shows it in the app and notification.
 - **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
   number with the message: `שיר מעולה, אתם הכי טובים!`
 - **No Google Play Services.** Not even a dependency. This app
@@ -121,8 +124,8 @@ the Elah Valley, Beit Guvrin, and Eshtaol Forest.
 - **ICY metadata reader** — polls the stream metadata and shows it in the
   app/notification when the station provides it. Real in-app music
   fingerprinting requires a recognition API/service.
-- **Track history** — stores up to 5 tracks locally and lets the
-  user copy the list (populated from ICY metadata)
+- **ICY metadata reader** — polls the stream metadata and shows it in the
+  app/notification when the station provides it
 - **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
   Hebrew message
 - **~24 KB Android APK** — smaller than most favicons

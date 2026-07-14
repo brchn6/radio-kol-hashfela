@@ -31,14 +31,13 @@ with command-line tools (no Gradle, no IDE, no external deps).
 - Streams in a foreground service (`RadioService`) so playback
   continues when the screen is off or other apps are in use
 - Notification with Play/Stop media controls
-- Track history: stores up to 5 tracks locally and provides a
-  Copy playlist button (populated from ICY metadata)
+- Shows ICY stream metadata when the station sends real song info
 
 ## Source files
 
 | File | What it does |
 |------|-------------|
-| `src/…/MainActivity.java` | UI layout, play/stop toggle, background image loading, track history/copy UI |
+| `src/…/MainActivity.java` | UI layout, play/stop toggle, background image loading, metadata display |
 | `src/…/RadioService.java` | MediaPlayer + foreground service + notification + auto-reconnect + ICY metadata reader |
 | `AndroidManifest.xml` | Permissions (INTERNET, FOREGROUND_SERVICE, POST_NOTIFICATIONS) |
 | `res/values/strings.xml` | Strings (stream URL, app name, labels) |
