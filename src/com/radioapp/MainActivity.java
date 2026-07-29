@@ -196,6 +196,14 @@ public class MainActivity extends Activity {
         super.onStop();
     }
 
+    @Override
+    protected void onDestroy() {
+        if (isFinishing()) {
+            startRadioService(RadioService.ACTION_STOP);
+        }
+        super.onDestroy();
+    }
+
     private void togglePlayback() {
         if (isPlaying) {
             startRadioService(RadioService.ACTION_STOP);

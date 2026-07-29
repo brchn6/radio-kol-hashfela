@@ -55,7 +55,7 @@ echo "=== Generating R.java and base APK ==="
 
 # ─── Step 3: Compile Java sources (including generated R.java) ─────────
 echo "=== Compiling Java sources ==="
-LIBS="$PROJECT_DIR/libs/media3-common.jar:$PROJECT_DIR/libs/media3-exoplayer.jar:$PROJECT_DIR/libs/media3-datasource.jar:$PROJECT_DIR/libs/media3-decoder.jar:$PROJECT_DIR/libs/media3-extractor.jar:$PROJECT_DIR/libs/guava.jar:$PROJECT_DIR/libs/failureaccess.jar"
+LIBS=$(find "$PROJECT_DIR/libs" -name '*.jar' | sort | tr '\n' ':')
 javac -source 8 -target 8 \
     -cp "$ANDROID_JAR:$LIBS" \
     -d "$BUILD_DIR/classes" \

@@ -6,6 +6,9 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.net.Uri;
@@ -40,6 +43,7 @@ public class RadioService extends Service {
 
     private ExoPlayer player;
     private MediaSession mediaSession;
+    private AudioManager audioManager;
     private boolean metadataFetchInProgress = false;
     private String currentMetadata = "";
 
@@ -120,6 +124,7 @@ public class RadioService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         createNotificationChannel();
         createMediaSession();
         startForeground(NOTIF_ID, buildNotification("Connecting…", true));
@@ -139,6 +144,7 @@ public class RadioService extends Service {
 
     @Override
     public void onDestroy() {
+        abandonAudioFocus();
         handler.removeCallbacks(metadataRunnable);
         if (player != null) {
             player.stop();
@@ -185,18 +191,69 @@ public class RadioService extends Service {
         player.setMediaItem(MediaItem.fromUri(Uri.parse(getString(R.string.radio_url))));
         player.setPlayWhenReady(true);
         player.prepare();
+
+        requestAudioFocus();
     }
 
     private void stopPlaybackByUser() {
         Log.i(TAG, "Stopping playback by user request");
+        abandonAudioFocus();
         handler.removeCallbacks(metadataRunnable);
         if (player != null) {
             player.stop();
-            player.clearMediaItems();
+            player.release();
+            player = null;
         }
         currentMetadata = "";
-        updateNotification("Stopped", false);
-        updatePlaybackState(false);
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+        }
+        stopForeground(true);
+        stopSelf();
+    }
+
+    // ─── Audio Focus ──────────────────────────────────────────────────────
+
+    private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS
+                || focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+            Log.i(TAG, "Audio focus lost, stopping");
+            stopPlaybackByUser();
+        }
+    };
+
+    private void requestAudioFocus() {
+        if (audioManager == null) return;
+        AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AudioFocusRequest request = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setOnAudioFocusChangeListener(focusListener)
+                    .build();
+            audioManager.requestAudioFocus(request);
+        } else {
+            audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        }
+    }
+
+    private void abandonAudioFocus() {
+        if (audioManager == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+            AudioFocusRequest request = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setOnAudioFocusChangeListener(focusListener)
+                    .build();
+            audioManager.abandonAudioFocusRequest(request);
+        } else {
+            audioManager.abandonAudioFocus(focusListener);
+        }
     }
 
     private void handleUnexpectedStop() {
