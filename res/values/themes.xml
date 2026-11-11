@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <!-- Orange from the first frame: no white flash on launch -->
+        <item name="android:windowBackground">@color/brand_orange</item>
+        <item name="android:colorPrimary">@color/brand_orange</item>
+        <item name="android:colorPrimaryDark">@color/brand_orange_dark</item>
+        <item name="android:colorAccent">@color/brand_orange</item>
+    </style>
+</resources>

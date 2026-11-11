@@ -1,164 +1,109 @@
 <p align="center">
-  <img src="logo.png" alt="Radio Kol Hashfela logo" width="120">
+  <img src="site/logo.png" alt="Kol Hashfela 103.6FM logo" width="120">
 </p>
 
-# 📻 Radio Kol Hashfela — 103.6FM
+# 📻 קול השפלה 103.6FM - Android app
 
-> ⚠️ **Unofficial.** I'm just a listener who loves this station.
-> Not affiliated with Radio Kol Hashfela or 103.6FM.
+> ⚠️ **Unofficial.** A fan app built by a listener. Not affiliated with Radio Kol Hashfela / 103.6FM.
 
-A **minimal, zero-permission-grabbing** mobile app that streams
-[Radio Kol Hashfela 103.6FM](https://radio.streamgates.net/stream/1036kh)
-(רדיו קול השפלה 103.6FM) — straight from the source, with no ads,
-no trackers, no nonsense.
+A one-button Android app for [Radio Kol Hashfela 103.6FM](https://www.1036kh.com/) in Rehovot. Open it and the station plays. No ads, no tracking, no accounts.
 
-The repo contains the original Android app plus a matching iPhone/iOS
-SwiftUI app under `ios/`.
+**Download page (share this link):** https://brchn6.github.io/radio-kol-hashfela/
 
-It now includes notification-area Play/Stop controls, Shfela-region
-nature backgrounds, ICY stream metadata display, and a quick WhatsApp
-button for sending the station a pre-filled Hebrew compliment.
+<p align="center"><img src="site/app.png" alt="App screenshot" width="260"></p>
 
-Track names come from ICY metadata when the station sends them;
-the app does not do any song recognition.
+## What it does
 
-## What makes this different
+- Starts playing the live stream as soon as you open it.
+- Keeps playing with the screen off or in other apps, with Stop in the notification and the station logo on the lock screen.
+- Pauses for phone calls and navigation prompts (Waze, Maps) and resumes by itself afterwards.
+- Stops when headphones are unplugged or another app starts playing music.
+- Reconnects by itself when the network drops: immediately when a network comes back or Wi-Fi/mobile data switches, otherwise retrying every 2s, 4s, 8s ... up to 30s.
+- One-tap WhatsApp message to the station, plus links to its Facebook, Instagram, YouTube and website.
+- Look modelled on the station's original iPhone app: orange background, logo card, big play button.
 
-- **No ads.** The stream plays directly — no browser, no pop-ups,
-  no "skip this video" nonsense.
-- **No creepy permissions.** Internet access (to play the stream)
-  and notification/foreground-service access (so it can keep playing
-  in the background and show Play/Stop controls).
-  That's it. No camera, no mic, no contacts, no location, no
-  storage, no phone state.
-- **Notification controls.** Stop or restart playback from the phone's
-  notification shade / top area without reopening the app.
-- **Shfela scenery.** The background image is randomly chosen from
-  nature photos around the Hashfela/Shfela region.
-- **Now playing metadata.** Reads the station's ICY stream metadata when
-  available. Currently the stream reports `Streaming Powered By Multix`,
-  not real song title/artist data.
-- **Now Playing metadata.** Reads the station's ICY stream metadata when
-  available and shows it in the app and notification.
-- **WhatsApp shortcut.** Tap one button to open WhatsApp to the station
-  number with the message: `שיר מעולה, אתם הכי טובים!`
-- **No Google Play Services.** Not even a dependency. This app
-  doesn't track you, doesn't phone home, doesn't ask who you are.
-- **Open source.** Every line of code is right here. Build it yourself
-  in 10 seconds.
+## Permissions
 
-## How to get it on your phone
+| Permission | Why |
+|---|---|
+| `INTERNET` | play the stream |
+| `ACCESS_NETWORK_STATE` | reconnect the moment the internet comes back (Wi-Fi / mobile switch, no signal) |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | keep playing in the background |
+| `POST_NOTIFICATIONS` | the Play/Stop notification (Android 13+) |
+| `WAKE_LOCK` | keep Wi-Fi awake while streaming with the screen off |
 
-### Android option 1 — Download the APK (easiest)
+No camera, microphone, contacts, location, storage or phone state.
 
-Go to the **Releases** tab on GitHub (or [click here][releases])
-and grab the latest `.apk` file. A fresh **Latest APK** release is
-published automatically after every push to `main`. Transfer it to your
-phone however you like, then:
+## Build
 
-1. Open the downloaded `.apk` file on your phone
-2. If prompted, allow installation from **"unknown sources"**
-   (this just means you're installing outside the Play Store —
-   every app store works this way)
-3. Tap **Install**
-4. Open the app — the radio starts playing automatically
-
-### Android option 2 — Build it yourself
-
-You only need:
-- Linux / macOS / WSL
-- Android SDK (command-line tools — the build script downloads
-  nothing extra beyond what the SDK needs)
+Requirements: Android SDK command-line tools at `~/Android/Sdk` with `platforms;android-35` and `build-tools;35.0.0`, and JDK 17 at `~/tools/jdk17` (override with `ANDROID_HOME` / `JAVA_HOME`). No Gradle; Media3 (ExoPlayer) JARs are bundled in `libs/`.
 
 ```bash
-# Install the Android command-line SDK, then:
-git clone https://github.com/brchn6/radio-kol-hashfela.git
-cd radio-kol-hashfela
+# Compile check, no signing (this is what CI runs)
+UNSIGNED=1 ./build.sh
+
+# Signed release APK -> build/KolHashfela.apk
 ./build.sh
 ```
 
-The APK lands at `build/radio.apk`. Transfer it to your phone
-(ADB, USB, KDE Connect, email yourself — whatever works).
+### The release signing key
 
-### iPhone / iOS build
+Release APKs are signed with a private key kept outside the repo, so nobody else can publish an APK that installs over this app.
 
-The iOS app lives in `ios/RadioKolHashfela.xcodeproj` and uses SwiftUI,
-AVPlayer, background audio, Control Center / lock-screen media controls,
-Shfela background photos, and the same WhatsApp shortcut.
+- Location: `~/.secrets/radio-kol-hashfela/release.keystore` and `keystore.pass` (mode 0600). Override with `RADIO_KEYSTORE` / `RADIO_KEYSTORE_PASS_FILE`.
+- Created once with `scripts/make-release-key.sh` (refuses to overwrite an existing key).
+- **Back both files up.** If they are lost, no future version can install as an update; every user would have to uninstall and reinstall.
+- Certificate SHA-256: `4A:83:6E:06:2F:5E:5E:F9:1F:CF:43:FA:0A:F9:A6:E3:1F:2E:53:29:BC:0E:99:73:86:DC:81:2E:30:9E:4B:3F` (also shown on the download page).
+- `./build.sh` refuses to sign if the key is missing. It never generates a throwaway key.
 
-Build it on macOS with Xcode:
+## Test on a phone
 
 ```bash
-cd ios
-./build-ios.sh
+adb devices                                   # phone listed as "device"
+adb install -r build/KolHashfela.apk
+adb shell am start -n io.github.brchn6.kolhashfela/com.radioapp.MainActivity
+adb logcat -s RadioService                    # playback log
 ```
 
-For installing on a real iPhone, open `ios/RadioKolHashfela.xcodeproj`
-in Xcode and choose your Apple development team for signing.
+Expected: the app opens orange with the logo, shows "מתחבר…" with a spinner, then "● בשידור חי" and audio plays. The notification shows the logo with a Stop button.
 
-## What it looks like
+## Publishing a new version
 
-A random nature photo from Israel's Hashfela/Shfela area is fetched
-when you open the app. The main button is **Play / Stop**, right in
-the center, with quick **WhatsApp** and **Copy playlist** buttons at the bottom.
+1. Bump `android:versionCode` (+1) and `android:versionName` in `AndroidManifest.xml`. Phones refuse an update with the same or lower versionCode.
+2. `./build.sh` and test on a phone.
+3. Commit and push.
+4. Upload the APK. The asset **must** be named `KolHashfela.apk`, because the download page links to `releases/latest/download/KolHashfela.apk`:
 
-<img src="mockup.svg" alt="App mockup" width="320">
+```bash
+gh release create v2.0 build/KolHashfela.apk --title "v2.0" --notes "What changed" --latest
+```
 
-<small>*Mockup — the actual photo changes every time you open the app.*</small>
+5. Check the link downloads the new file: `curl -sIL https://github.com/brchn6/radio-kol-hashfela/releases/latest/download/KolHashfela.apk | grep -i '^location' | tail -1`
 
-Background photos are loaded from Wikimedia Commons and feature places
-around the Shfela such as Tel Azeka, Adullam-France Park, Britannia Park,
-the Elah Valley, Beit Guvrin, and Eshtaol Forest.
+## Download page
 
-## Tech details
+`site/` is a static Hebrew page (download button, install steps, link preview image for Facebook/WhatsApp). The workflow `.github/workflows/pages.yml` publishes it to GitHub Pages on every push that touches `site/`.
 
-- **Android API 26+** (Android 8.0+) — covers ~99% of active devices
-- **iOS 15+** SwiftUI app in `ios/`
-- **AAC+ stream** at 64 kbps, served directly by the station
-- **Android foreground service** — keeps playing when the screen is off
-  or you're using other apps
-- **Android media-style notification** — compact Play/Stop action in the
-  notification shade
-- **iOS background audio + Now Playing controls** — supports Control Center,
-  lock screen, and headset controls
-- **ExoPlayer (Media3) engine** — Google's recommended player (same engine
-  as YouTube Music and Spotify). Handles buffering and network drops
-  without glitching.
-- **ICY metadata reader** — polls the stream metadata and shows it in the
-  app/notification when the station provides it
-- **WhatsApp link** — opens `wa.me/972585851036` with a pre-filled
-  Hebrew message
-- **~2.3 MB Android APK** — Media3 (ExoPlayer) bundled for reliable streaming
-- Android built with `aapt2` + `javac` + `d8` + `apksigner` — no Gradle,
-  no IDE. Media3 JARs bundled in `libs/`.
-- iOS builds with Xcode / `xcodebuild`
+- One-time setup: repo Settings → Pages → Source: **GitHub Actions**.
+- Preview locally: open `site/index.html` in a browser.
+- `site/og.png` (1200x630) is the image Facebook shows when the link is shared. After changing it, refresh Facebook's cache at https://developers.facebook.com/tools/debug/ .
 
-## Product paths
+## Project layout
 
-### Minimal (this branch — `main`)
-A clean radio player with no song recognition, no API keys, no
-network calls beyond the stream itself and Wikimedia background images.
-Builds entirely offline with just the Android SDK. The track history
-works from ICY metadata if the station sends real song info.
+| Path | What |
+|---|---|
+| `src/com/radioapp/MainActivity.java` | The screen: logo card, play button, WhatsApp and links; reads state from the service |
+| `src/com/radioapp/RadioService.java` | Foreground service: ExoPlayer, audio focus, reconnect, notification, lock-screen media session |
+| `res/` | Hebrew strings, colors, theme, vector icons, launcher icon (adaptive), station logo |
+| `AndroidManifest.xml` | App ID `io.github.brchn6.kolhashfela`, version, permissions |
+| `build.sh` | aapt2 → javac → d8 → zipalign → apksigner |
+| `scripts/make-release-key.sh` | One-time private signing key creation |
+| `site/` | Download page for GitHub Pages |
+| `.github/workflows/build.yml` | CI compile check on every push (does not publish) |
+| `docs/audiotag-evaluation.md` | Earlier song-recognition experiments (not in the app) |
 
-### Maximal (recognition via backend proxy)
-Song recognition requires a server-side API key. This repo documents
-the experiments:
-
-| Service | What it needs | Docs |
-|---------|--------------|------|
-| **AudioTag** | API key on a backend proxy. Free quota ~10,800 sec/month. Prototype proven. | `docs/audiotag-evaluation.md` |
-| **ShazamIO** | Python backend (reverse-engineered Shazam API). No official key needed. | `docs/audiotag-evaluation.md` |
-| **ACRCloud** | API key + SDK. Credential plumbing exists in git history. | — |
-
-The minimal app never embeds recognition credentials. For a production
-recognition feature, all API calls go through your own backend so keys
-stay server-side.
-
----
+Stream: `https://radio.streamgates.net/stream/1036kh` (AAC+ 64 kbps). The app shows song titles from the stream's ICY metadata if the station ever sends real ones (today it sends only a generic placeholder, which is hidden).
 
 ## License
 
-Do whatever you want. This is for the love of radio.
-
-[releases]: https://github.com/brchn6/radio-kol-hashfela/releases/latest
+Do whatever you want with the code. This is for the love of radio. The station name and logo belong to Radio Kol Hashfela.

@@ -8,223 +8,302 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowInsets;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Random;
-
+/**
+ * Single screen, modelled on the station's original app: orange background,
+ * the 103.6FM logo on a white card, one big play button, then WhatsApp and
+ * the station's social links. All playback state comes from RadioService.
+ */
 public class MainActivity extends Activity {
 
-    private static final String[] HASHFELA_BACKGROUND_URLS = {
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/TEL_AZEKA_A.jpg/1280px-TEL_AZEKA_A.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Adullam-France_Park.jpg/1280px-Adullam-France_Park.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Pristine_wilderness_in_Adullam-France_Park.jpg/1280px-Pristine_wilderness_in_Adullam-France_Park.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Park_Britannia_DSC_1202_%288411816956%29.jpg/1280px-Park_Britannia_DSC_1202_%288411816956%29.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/The_Elah_valley.jpg/1280px-The_Elah_valley.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Valley_of_Elah.jpg/1280px-Valley_of_Elah.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Israel_Beit_Guvrin_P1050959.JPG/1280px-Israel_Beit_Guvrin_P1050959.JPG",
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/135175_eshtaol_forest_observation_PikiWiki_Israel.jpg/1280px-135175_eshtaol_forest_observation_PikiWiki_Israel.jpg"
-    };
+    private static final int WHITE = Color.WHITE;
 
-    private Button toggleButton;
+    private ImageButton playButton;
+    private ProgressBar connectingRing;
     private TextView statusText;
-    private boolean isPlaying = false;
 
-    private final BroadcastReceiver metadataReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver stateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (RadioService.ACTION_METADATA_UPDATE.equals(intent.getAction()) && isPlaying) {
-                String metadata = intent.getStringExtra(RadioService.EXTRA_METADATA);
-                if (metadata != null && !metadata.trim().isEmpty()) {
-                    statusText.setText(metadata);
-                }
-            }
+            render();
         }
     };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // ─── Background ImageView ────────────────────────────────────
-        ImageView backgroundImage = new ImageView(this);
-        backgroundImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        backgroundImage.setColorFilter(Color.argb(100, 0, 0, 0));
-
-        // ─── Title ───────────────────────────────────────────────────
-        TextView title = new TextView(this);
-        title.setText(R.string.radio_name);
-        title.setTextSize(28);
-        title.setTypeface(null, Typeface.BOLD);
-        title.setTextColor(Color.WHITE);
-        title.setShadowLayer(8, 0, 2, Color.BLACK);
-        title.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        title.setPadding(24, 0, 24, 8);
-
-        // ─── Status ──────────────────────────────────────────────────
-        statusText = new TextView(this);
-        statusText.setText("Loading\u2026");
-        statusText.setTextSize(16);
-        statusText.setTextColor(Color.argb(220, 255, 255, 255));
-        statusText.setShadowLayer(6, 0, 2, Color.BLACK);
-        statusText.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        statusText.setPadding(24, 0, 24, 48);
-
-        // ─── Circular Play / Pause Button ────────────────────────────
-        toggleButton = new Button(this, null, android.R.attr.buttonStyle);
-        toggleButton.setText("\u25B6");  // ▶ play triangle
-        toggleButton.setTextSize(36);
-        toggleButton.setTypeface(Typeface.DEFAULT);
-        toggleButton.setTextColor(Color.BLACK);
-        toggleButton.setAllCaps(false);
-
-        int btnSize = dpToPx(76);
-        GradientDrawable circleBg = new GradientDrawable();
-        circleBg.setShape(GradientDrawable.OVAL);
-        circleBg.setSize(btnSize, btnSize);
-        circleBg.setColor(Color.argb(220, 255, 255, 255));
-        toggleButton.setBackground(circleBg);
-        toggleButton.setMinWidth(btnSize);
-        toggleButton.setMinHeight(btnSize);
-        toggleButton.setPadding(0, 0, 0, 0);
-        toggleButton.setOnClickListener(v -> togglePlayback());
-
-        // ─── Center column: title + status + play button ─────────────
-        FrameLayout centerColumn = new FrameLayout(this);
-        centerColumn.setForegroundGravity(Gravity.CENTER);
-
-        FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        titleParams.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
-        titleParams.topMargin = dpToPx(32);
-        centerColumn.addView(title, titleParams);
-
-        FrameLayout.LayoutParams statusParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        statusParams.gravity = Gravity.CENTER_HORIZONTAL | Gravity.TOP;
-        statusParams.topMargin = dpToPx(84);
-        centerColumn.addView(statusText, statusParams);
-
-        FrameLayout.LayoutParams playParams = new FrameLayout.LayoutParams(btnSize, btnSize);
-        playParams.gravity = Gravity.CENTER;
-        centerColumn.addView(toggleButton, playParams);
-
-        // ─── WhatsApp Button — bottom-left ───────────────────────────
-        Button whatsappButton = new Button(this, null, android.R.attr.buttonStyle);
-        whatsappButton.setText("\uD83D\uDCAC  WhatsApp");
-        whatsappButton.setTextSize(15);
-        whatsappButton.setTypeface(Typeface.DEFAULT);
-        whatsappButton.setTextColor(Color.WHITE);
-        whatsappButton.setAllCaps(false);
-
-        GradientDrawable waBg = new GradientDrawable();
-        waBg.setShape(GradientDrawable.RECTANGLE);
-        waBg.setCornerRadius(dpToPx(24));
-        waBg.setColor(Color.parseColor("#25D366"));
-        whatsappButton.setBackground(waBg);
-        whatsappButton.setPadding(dpToPx(20), dpToPx(12), dpToPx(24), dpToPx(12));
-        whatsappButton.setOnClickListener(v -> openWhatsApp());
-
-        FrameLayout.LayoutParams waParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        waParams.gravity = Gravity.BOTTOM | Gravity.START;
-        waParams.setMargins(dpToPx(20), 0, 0, dpToPx(40));
-        whatsappButton.setLayoutParams(waParams);
-
-        // ─── Root: FrameLayout stacks everything ─────────────────────
-        FrameLayout root = new FrameLayout(this);
-        root.addView(backgroundImage, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-
-        FrameLayout.LayoutParams centerParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT);
-        root.addView(centerColumn, centerParams);
-
-        root.addView(whatsappButton, waParams);
-
-        setContentView(root);
-
-        // ─── Fetch a random Hashfela nature photo ────────────────────
-        new Thread(() -> {
-            Bitmap bmp = downloadImage(randomHashfelaBackgroundUrl());
-            if (bmp != null) {
-                runOnUiThread(() -> backgroundImage.setImageBitmap(bmp));
-            }
-        }).start();
-
+        setContentView(buildLayout());
         requestNotificationPermission();
 
-        // ─── Auto-start playback ─────────────────────────────────────
-        togglePlayback();
+        // Open the app = start listening (unless it's already on).
+        if (savedInstanceState == null && RadioService.getState() == RadioService.STATE_STOPPED) {
+            play();
+        }
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        IntentFilter filter = new IntentFilter(RadioService.ACTION_METADATA_UPDATE);
+        IntentFilter filter = new IntentFilter(RadioService.ACTION_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(metadataReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(stateReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
-            registerReceiver(metadataReceiver, filter);
+            registerReceiver(stateReceiver, filter);
         }
+        render();
     }
 
     @Override
     protected void onStop() {
-        unregisterReceiver(metadataReceiver);
+        unregisterReceiver(stateReceiver);
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
-        if (isFinishing()) {
-            startRadioService(RadioService.ACTION_STOP);
-        }
+        // Activity really finished (Back on Android 11 and older) = radio off too.
+        // On Android 12+ Back only hides the app and the radio keeps playing;
+        // swiping it from Recents stops it (RadioService.onTaskRemoved).
+        if (isFinishing()) stop();
         super.onDestroy();
     }
 
+    // ─── Playback control ─────────────────────────────────────────────────
+
     private void togglePlayback() {
-        if (isPlaying) {
-            startRadioService(RadioService.ACTION_STOP);
-            toggleButton.setText("\u25B6");   // ▶
-            statusText.setText("Stopped");
-            isPlaying = false;
+        if (RadioService.getState() == RadioService.STATE_STOPPED) {
+            play();
         } else {
-            startRadioService(RadioService.ACTION_PLAY);
-            toggleButton.setText("\u23F8");   // ⏸
-            statusText.setText("Now Playing");
-            isPlaying = true;
+            stop();
         }
     }
 
-    private void startRadioService(String action) {
-        Intent intent = new Intent(this, RadioService.class);
-        intent.setAction(action);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent);
+    private void play() {
+        Intent intent = new Intent(this, RadioService.class).setAction(RadioService.ACTION_PLAY);
+        startForegroundService(intent);
+    }
+
+    private void stop() {
+        if (RadioService.getState() == RadioService.STATE_STOPPED) return;
+        startService(new Intent(this, RadioService.class).setAction(RadioService.ACTION_STOP));
+    }
+
+    /** Draw the play button and status line from the service's real state. */
+    private void render() {
+        int state = RadioService.getState();
+        String track = RadioService.getTrack();
+
+        boolean stopped = state == RadioService.STATE_STOPPED;
+        playButton.setImageResource(stopped ? R.drawable.ic_play : R.drawable.ic_pause);
+        playButton.setContentDescription(getString(stopped ? R.string.play : R.string.stop));
+
+        boolean waiting = state == RadioService.STATE_CONNECTING
+                || state == RadioService.STATE_RECONNECTING;
+        connectingRing.setVisibility(waiting ? View.VISIBLE : View.INVISIBLE);
+
+        switch (state) {
+            case RadioService.STATE_PLAYING:
+                statusText.setText(track.isEmpty() ? "● " + getString(R.string.status_live) : track);
+                break;
+            case RadioService.STATE_CONNECTING:
+                statusText.setText(R.string.status_connecting);
+                break;
+            case RadioService.STATE_RECONNECTING:
+                statusText.setText(R.string.status_reconnecting);
+                break;
+            case RadioService.STATE_PAUSED:
+                statusText.setText(R.string.status_paused);
+                break;
+            default:
+                statusText.setText(R.string.status_stopped);
+        }
+    }
+
+    // ─── Layout ───────────────────────────────────────────────────────────
+
+    private View buildLayout() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        float wDp = dm.widthPixels / dm.density;
+        float hDp = dm.heightPixels / dm.density;
+        int cardDp = (int) Math.min(Math.min(wDp * 0.62f, hDp * 0.30f), 320f);
+
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        column.addView(new View(this), weighted());
+
+        // Logo card
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.station_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setBackground(rounded(WHITE, dp(28)));
+        logo.setClipToOutline(true);
+        logo.setElevation(dp(10));
+        logo.setContentDescription(getString(R.string.notif_title));
+        column.addView(logo, sized(dp(cardDp), dp(cardDp), 0));
+
+        // Name + frequency
+        TextView title = text(getString(R.string.radio_name), 30, WHITE);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        column.addView(title, wrap(dp(22)));
+
+        TextView subtitle = text(getString(R.string.radio_subtitle), 17, alpha(WHITE, 0.9f));
+        column.addView(subtitle, wrap(dp(2)));
+
+        // Status pill
+        statusText = text("", 15, WHITE);
+        statusText.setBackground(rounded(Color.argb(46, 0, 0, 0), dp(16)));
+        statusText.setPadding(dp(14), dp(6), dp(14), dp(6));
+        statusText.setMaxLines(2);
+        column.addView(statusText, wrap(dp(14)));
+
+        // Play button with a spinner ring while connecting
+        int btn = dp(92);
+        int ring = dp(112);
+        FrameLayout playHolder = new FrameLayout(this);
+        connectingRing = new ProgressBar(this);
+        connectingRing.setIndeterminate(true);
+        connectingRing.setIndeterminateTintList(ColorStateList.valueOf(WHITE));
+        playHolder.addView(connectingRing, new FrameLayout.LayoutParams(ring, ring, Gravity.CENTER));
+
+        playButton = new ImageButton(this);
+        GradientDrawable circle = new GradientDrawable();
+        circle.setShape(GradientDrawable.OVAL);
+        circle.setColor(WHITE);
+        playButton.setBackground(circle);
+        playButton.setImageTintList(ColorStateList.valueOf(getColor(R.color.brand_orange)));
+        playButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        playButton.setPadding(dp(24), dp(24), dp(24), dp(24));
+        playButton.setElevation(dp(8));
+        playButton.setOnClickListener(v -> togglePlayback());
+        playHolder.addView(playButton, new FrameLayout.LayoutParams(btn, btn, Gravity.CENTER));
+        column.addView(playHolder, sized(ring, ring, dp(18)));
+
+        column.addView(new View(this), weighted());
+
+        // WhatsApp to the station
+        Button whatsapp = pill(getString(R.string.whatsapp_button), Color.parseColor("#25D366"), 17);
+        whatsapp.setTypeface(Typeface.DEFAULT_BOLD);
+        whatsapp.setOnClickListener(v -> openWhatsApp());
+        LinearLayout.LayoutParams waParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
+        waParams.topMargin = dp(20);
+        column.addView(whatsapp, waParams);
+
+        // Station links
+        LinearLayout links = new LinearLayout(this);
+        links.setOrientation(LinearLayout.HORIZONTAL);
+        addLink(links, R.string.link_facebook, R.string.url_facebook);
+        addLink(links, R.string.link_instagram, R.string.url_instagram);
+        addLink(links, R.string.link_youtube, R.string.url_youtube);
+        addLink(links, R.string.link_website, R.string.url_website);
+        LinearLayout.LayoutParams linkRow = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        linkRow.topMargin = dp(10);
+        column.addView(links, linkRow);
+
+        // Footer: honest about being a fan app
+        TextView footer = text(getString(R.string.footer, versionName()), 12, alpha(WHITE, 0.75f));
+        column.addView(footer, wrap(dp(16)));
+
+        // Scrolls only on very short screens; otherwise the spacers center everything
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(column, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{getColor(R.color.brand_orange), getColor(R.color.brand_orange_dark)});
+        scroll.setBackground(bg);
+
+        applyEdgeToEdge(scroll, column);
+        return scroll;
+    }
+
+    /**
+     * Android 15 draws apps under the status and navigation bars; do it on
+     * every version and pad the content by the bar sizes so nothing is hidden.
+     */
+    private void applyEdgeToEdge(View root, View content) {
+        Window window = getWindow();
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false);
         } else {
-            startService(intent);
+            root.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        }
+        final int side = dp(24);
+        final int vertical = dp(16);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int left, top, right, bottom;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                left = bars.left;
+                top = bars.top;
+                right = bars.right;
+                bottom = bars.bottom;
+            } else {
+                left = insets.getSystemWindowInsetLeft();
+                top = insets.getSystemWindowInsetTop();
+                right = insets.getSystemWindowInsetRight();
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            content.setPadding(side + left, vertical + top, side + right, vertical + bottom);
+            return insets;
+        });
+    }
+
+    private void addLink(LinearLayout row, int labelRes, int urlRes) {
+        Button b = pill(getString(labelRes), Color.argb(56, 255, 255, 255), 14);
+        b.setOnClickListener(v -> openUrl(getString(urlRes)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        lp.setMarginStart(dp(3));
+        lp.setMarginEnd(dp(3));
+        row.addView(b, lp);
+    }
+
+    // ─── Links ────────────────────────────────────────────────────────────
+
+    private void openWhatsApp() {
+        openUrl("https://wa.me/" + getString(R.string.whatsapp_phone)
+                + "?text=" + Uri.encode(getString(R.string.whatsapp_message)));
+    }
+
+    private void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, R.string.no_app_for_link, Toast.LENGTH_LONG).show();
         }
     }
 
@@ -236,50 +315,68 @@ public class MainActivity extends Activity {
         }
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 1036 && isPlaying) {
-            startRadioService(RadioService.ACTION_PLAY);
-        }
-    }
-
-    private void openWhatsApp() {
-        String url = "https://wa.me/" + getString(R.string.whatsapp_phone)
-                + "?text=" + Uri.encode(getString(R.string.whatsapp_message));
+    private String versionName() {
         try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-        } catch (ActivityNotFoundException e) {
-            Toast.makeText(this, "No app found to open WhatsApp link", Toast.LENGTH_LONG).show();
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return "";
         }
     }
 
-    private String randomHashfelaBackgroundUrl() {
-        return HASHFELA_BACKGROUND_URLS[new Random().nextInt(HASHFELA_BACKGROUND_URLS.length)];
+    // ─── Small view helpers ───────────────────────────────────────────────
+
+    private TextView text(String s, int sp, int color) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(sp);
+        t.setTextColor(color);
+        t.setGravity(Gravity.CENTER);
+        return t;
     }
 
-    private Bitmap downloadImage(String urlString) {
-        try {
-            URL url = new URL(urlString);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(8000);
-            conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-            conn.connect();
-            if (conn.getResponseCode() == 200) {
-                InputStream is = conn.getInputStream();
-                Bitmap bmp = BitmapFactory.decodeStream(is);
-                is.close();
-                return bmp;
-            }
-        } catch (Exception ignored) {
-            // fall through — background stays dimmed black, looks fine
-        }
-        return null;
+    private Button pill(String label, int color, int sp) {
+        Button b = new Button(this, null, 0, android.R.style.Widget_Material_Button_Borderless);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(sp);
+        b.setTextColor(WHITE);
+        b.setMaxLines(1);
+        // Shrink instead of clipping when the phone uses a large font size
+        b.setAutoSizeTextTypeUniformWithConfiguration(9, sp, 1, TypedValue.COMPLEX_UNIT_SP);
+        b.setPadding(dp(4), 0, dp(4), 0);
+        b.setBackground(rounded(color, dp(26)));
+        return b;
     }
 
-    private int dpToPx(int dp) {
-        float density = getResources().getDisplayMetrics().density;
-        return Math.round(dp * density);
+    private GradientDrawable rounded(int color, int radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(radius);
+        return d;
+    }
+
+    private static int alpha(int color, float a) {
+        return Color.argb(Math.round(255 * a), Color.red(color), Color.green(color), Color.blue(color));
+    }
+
+    private LinearLayout.LayoutParams wrap(int topMargin) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = topMargin;
+        return lp;
+    }
+
+    private LinearLayout.LayoutParams sized(int w, int h, int topMargin) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h);
+        lp.topMargin = topMargin;
+        return lp;
+    }
+
+    private LinearLayout.LayoutParams weighted() {
+        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }

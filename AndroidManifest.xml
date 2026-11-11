@@ -1,24 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Application ID is io.github.brchn6.kolhashfela (unique, tied to the GitHub
+  account that publishes the APK). Java classes stay in com.radioapp; build.sh
+  generates R in that package with aapt2 link custom-package.
+  Bump versionCode on every release, or phones refuse to install the update.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.radioapp">
+    package="io.github.brchn6.kolhashfela"
+    android:versionCode="2"
+    android:versionName="2.0">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Notice when the internet comes back, to reconnect at once -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keeps Wi-Fi/CPU awake while streaming with the screen off -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@style/AppTheme">
 
         <activity
             android:name="com.radioapp.MainActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

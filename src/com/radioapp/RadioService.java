@@ -6,11 +6,13 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
-import android.media.AudioAttributes;
-import android.media.AudioFocusRequest;
-import android.media.AudioManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -18,144 +20,226 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 
+import androidx.media3.common.AudioAttributes;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.Metadata;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.extractor.metadata.icy.IcyInfo;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-
+/**
+ * Plays the stream in a foreground service so it keeps going with the screen
+ * off. ExoPlayer owns audio focus: it pauses for calls and navigation prompts
+ * and resumes afterwards, and stops when headphones are unplugged.
+ *
+ * The current state lives in static fields so the activity can read it on
+ * start, and every change is broadcast (ACTION_STATE_CHANGED) inside the app.
+ */
 public class RadioService extends Service {
 
+    private static final String TAG = "RadioService";
     private static final String CHANNEL_ID = "radio_channel";
     private static final int NOTIF_ID = 1001;
-    private static final String TAG = "RadioService";
+    private static final int MIN_RETRY_MS = 2000;
+    private static final int MAX_RETRY_MS = 30000;
 
     public static final String ACTION_PLAY = "com.radioapp.PLAY";
     public static final String ACTION_STOP = "com.radioapp.STOP";
-    public static final String ACTION_METADATA_UPDATE = "com.radioapp.METADATA_UPDATE";
-    public static final String EXTRA_METADATA = "metadata";
+    public static final String ACTION_STATE_CHANGED = "com.radioapp.STATE_CHANGED";
 
-    private ExoPlayer player;
-    private MediaSession mediaSession;
-    private AudioManager audioManager;
-    private boolean metadataFetchInProgress = false;
-    private String currentMetadata = "";
+    public static final int STATE_STOPPED = 0;
+    public static final int STATE_CONNECTING = 1;
+    public static final int STATE_PLAYING = 2;
+    /** Paused by the system for a call or navigation prompt; resumes by itself. */
+    public static final int STATE_PAUSED = 3;
+    public static final int STATE_RECONNECTING = 4;
 
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private static volatile int sState = STATE_STOPPED;
+    private static volatile String sTrack = "";
 
-    private final Runnable metadataRunnable = new Runnable() {
-        @Override
-        public void run() {
-            boolean shouldFetch;
-            synchronized (this) {
-                shouldFetch = isActuallyPlaying() && !metadataFetchInProgress;
-                if (shouldFetch) metadataFetchInProgress = true;
-            }
-
-            if (shouldFetch) {
-                new Thread(() -> {
-                    try {
-                        String metadata = fetchIcyMetadata();
-                        if (metadata != null && !metadata.trim().isEmpty()) {
-                            updateMetadata(metadata.trim());
-                        }
-                    } finally {
-                        synchronized (this) {
-                            metadataFetchInProgress = false;
-                        }
-                    }
-                }, "IcyMetadataReader").start();
-            }
-
-            handler.postDelayed(this, 30000);
-        }
-    };
-
-    private boolean isActuallyPlaying() {
-        return player != null && player.getPlaybackState() == Player.STATE_READY && player.getPlayWhenReady();
+    public static int getState() {
+        return sState;
     }
 
-    // ─── Player listener ──────────────────────────────────────────────────
+    /** ICY song title when the station sends one, otherwise "". */
+    public static String getTrack() {
+        return sTrack;
+    }
+
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private ExoPlayer player;
+    private MediaSession mediaSession;
+    private Bitmap logo;
+    private int retryDelayMs = MIN_RETRY_MS;
+    private boolean stopping = false;
+
+    private ConnectivityManager connectivity;
+    private Network currentNetwork;
+
+    private final Runnable reconnectRunnable = () -> {
+        if (player == null) return;
+        Log.i(TAG, "Reconnecting");
+        player.setMediaItem(streamItem());
+        player.prepare();
+        player.play();
+    };
+
+    /**
+     * Reconnect the moment a network appears instead of waiting out the retry
+     * timer: after airplane mode / no signal, and on Wi-Fi <-> mobile data
+     * switches, where the old connection dies silently.
+     */
+    private final ConnectivityManager.NetworkCallback networkCallback =
+            new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    handler.post(() -> onNetworkAvailable(network));
+                }
+            };
+
+    private void onNetworkAvailable(Network network) {
+        boolean switched = currentNetwork != null && !network.equals(currentNetwork);
+        currentNetwork = network;
+        if (player == null || stopping) return;
+        if (sState == STATE_RECONNECTING || (switched && sState != STATE_PAUSED)) {
+            Log.i(TAG, "Network available (switched=" + switched + "), reconnecting now");
+            retryDelayMs = MIN_RETRY_MS;
+            handler.removeCallbacks(reconnectRunnable);
+            if (sState != STATE_RECONNECTING) setState(STATE_RECONNECTING);
+            reconnectRunnable.run();
+        }
+    }
+
+    // ─── Player events ────────────────────────────────────────────────────
 
     private final Player.Listener playerListener = new Player.Listener() {
         @Override
         public void onPlaybackStateChanged(int playbackState) {
-            switch (playbackState) {
-                case Player.STATE_READY:
-                    Log.i(TAG, "ExoPlayer ready — streaming");
-                    updateNotification(currentMetadata.isEmpty() ? "Now Playing" : currentMetadata, true);
-                    updatePlaybackState(true);
-                    handler.removeCallbacks(metadataRunnable);
-                    handler.post(metadataRunnable);
-                    break;
-                case Player.STATE_BUFFERING:
-                    Log.i(TAG, "ExoPlayer buffering");
-                    updateNotification("Buffering…", true);
-                    break;
-                case Player.STATE_ENDED:
-                    Log.w(TAG, "Stream ended unexpectedly");
-                    handleUnexpectedStop();
-                    break;
+            if (playbackState == Player.STATE_READY) {
+                retryDelayMs = MIN_RETRY_MS;
+                refreshPlayingState();
+            } else if (playbackState == Player.STATE_BUFFERING) {
+                if (sState != STATE_RECONNECTING) setState(STATE_CONNECTING);
+            } else if (playbackState == Player.STATE_ENDED) {
+                Log.w(TAG, "Stream ended unexpectedly");
+                scheduleReconnect();
             }
         }
 
         @Override
         public void onPlayerError(PlaybackException error) {
-            Log.e(TAG, "ExoPlayer error: " + error.getErrorCodeName() + " — " + error.getMessage());
-            handleUnexpectedStop();
+            Log.e(TAG, "Player error: " + error.getErrorCodeName(), error);
+            scheduleReconnect();
         }
 
         @Override
-        public void onIsPlayingChanged(boolean isPlaying) {
-            if (isPlaying) {
-                Log.i(TAG, "ExoPlayer is playing");
+        public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+            // Another app took the audio for good, or headphones were unplugged:
+            // stop fully, the same as the user pressing Stop.
+            if (!playWhenReady
+                    && (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+                    || reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY)) {
+                Log.i(TAG, "Stopping: focus lost or headphones unplugged (reason " + reason + ")");
+                handler.post(RadioService.this::stopPlayback);
+            }
+        }
+
+        @Override
+        public void onPlaybackSuppressionReasonChanged(int reason) {
+            refreshPlayingState();
+        }
+
+        @Override
+        public void onMetadata(Metadata metadata) {
+            for (int i = 0; i < metadata.length(); i++) {
+                Metadata.Entry entry = metadata.get(i);
+                if (entry instanceof IcyInfo) {
+                    String title = ((IcyInfo) entry).title;
+                    String track = isGenericTitle(title) ? "" : title.trim();
+                    if (!track.equals(sTrack)) {
+                        sTrack = track;
+                        publish();
+                    }
+                }
             }
         }
     };
+
+    private void refreshPlayingState() {
+        if (player == null || player.getPlaybackState() != Player.STATE_READY) return;
+        boolean suppressed = player.getPlaybackSuppressionReason()
+                != Player.PLAYBACK_SUPPRESSION_REASON_NONE;
+        setState(suppressed ? STATE_PAUSED : STATE_PLAYING);
+    }
+
+    private static boolean isGenericTitle(String title) {
+        String t = title == null ? "" : title.trim().toLowerCase();
+        return t.isEmpty()
+                || t.equals("streaming powered by multix")
+                || t.equals("radio kol hashfela")
+                || t.equals("kol hashfela");
+    }
 
     // ─── Lifecycle ────────────────────────────────────────────────────────
 
     @Override
     public void onCreate() {
         super.onCreate();
-        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        logo = BitmapFactory.decodeResource(getResources(), R.drawable.station_logo);
         createNotificationChannel();
         createMediaSession();
-        startForeground(NOTIF_ID, buildNotification("Connecting…", true));
+        connectivity = getSystemService(ConnectivityManager.class);
+        connectivity.registerDefaultNetworkCallback(networkCallback);
+        sState = STATE_CONNECTING;
+        sTrack = "";
+        startForeground(NOTIF_ID, buildNotification());
+        broadcastState();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // NOT_STICKY everywhere: a system restart with a null intent would call
+        // startForeground from the background, which Android 12+ forbids.
         String action = intent != null ? intent.getAction() : null;
-        if (ACTION_STOP.equals(action)) {
-            stopPlaybackByUser();
+        if (intent == null || ACTION_STOP.equals(action)) {
+            stopPlayback();
             return START_NOT_STICKY;
         }
-
+        // Every start request must be answered with startForeground, also when
+        // Play arrives right after Stop on the same (not yet destroyed) instance.
+        startForeground(NOTIF_ID, buildNotification());
         startPlayback();
-        return START_STICKY;
+        return START_NOT_STICKY;
+    }
+
+    /** Swiping the app away from Recents stops the radio (Bar's choice since v1). */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        stopPlayback();
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
-        abandonAudioFocus();
-        handler.removeCallbacks(metadataRunnable);
-        if (player != null) {
-            player.stop();
-            player.release();
-            player = null;
+        try {
+            connectivity.unregisterNetworkCallback(networkCallback);
+        } catch (RuntimeException ignored) {
+            // not registered
         }
+        handler.removeCallbacksAndMessages(null);
+        releasePlayer();
         if (mediaSession != null) {
             mediaSession.setActive(false);
             mediaSession.release();
             mediaSession = null;
         }
+        sState = STATE_STOPPED;
+        sTrack = "";
+        broadcastState();
         super.onDestroy();
     }
 
@@ -166,213 +250,121 @@ public class RadioService extends Service {
 
     // ─── Playback ─────────────────────────────────────────────────────────
 
+    private MediaItem streamItem() {
+        return MediaItem.fromUri(Uri.parse(getString(R.string.radio_url)));
+    }
+
     private void startPlayback() {
+        stopping = false;
+        mediaSession.setActive(true);
         if (player != null) {
-            if (isActuallyPlaying()) return;
-            // Reuse existing player — just start it
-            player.prepare();
-            player.play();
+            if (!player.getPlayWhenReady() || player.getPlaybackState() == Player.STATE_IDLE) {
+                player.prepare();
+                player.play();
+            }
             return;
         }
 
-        Log.i(TAG, "Starting ExoPlayer");
+        Log.i(TAG, "Starting player");
+        setState(STATE_CONNECTING);
 
-        DefaultHttpDataSource.Factory dataSourceFactory = new DefaultHttpDataSource.Factory()
-                .setUserAgent("RadioKolHashfela/1.0")
-                .setConnectTimeoutMs(8000)
-                .setReadTimeoutMs(30000)
+        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+                .setUserAgent("KolHashfelaApp/2.0")
+                .setConnectTimeoutMs(10000)
+                .setReadTimeoutMs(15000)
                 .setAllowCrossProtocolRedirects(true);
 
-        player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory))
+        AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .build();
 
+        player = new ExoPlayer.Builder(this)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(http))
+                .setAudioAttributes(attrs, /* handleAudioFocus= */ true)
+                .setHandleAudioBecomingNoisy(true)
+                .setWakeMode(C.WAKE_MODE_NETWORK)
+                .build();
         player.addListener(playerListener);
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(getString(R.string.radio_url))));
+        player.setMediaItem(streamItem());
         player.setPlayWhenReady(true);
         player.prepare();
-
-        requestAudioFocus();
     }
 
-    private void stopPlaybackByUser() {
-        Log.i(TAG, "Stopping playback by user request");
-        abandonAudioFocus();
-        handler.removeCallbacks(metadataRunnable);
-        if (player != null) {
-            player.stop();
-            player.release();
-            player = null;
-        }
-        currentMetadata = "";
-        if (mediaSession != null) {
-            mediaSession.setActive(false);
-        }
-        stopForeground(true);
+    /** Full stop: release the player, remove the notification, end the service. */
+    private void stopPlayback() {
+        if (stopping) return;
+        stopping = true;
+        Log.i(TAG, "Stopping playback");
+        handler.removeCallbacks(reconnectRunnable);
+        releasePlayer();
+        sState = STATE_STOPPED;
+        sTrack = "";
+        updateSession();
+        broadcastState();
+        stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
 
-    // ─── Audio Focus ──────────────────────────────────────────────────────
-
-    private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> {
-        if (focusChange == AudioManager.AUDIOFOCUS_LOSS
-                || focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
-            Log.i(TAG, "Audio focus lost, stopping");
-            stopPlaybackByUser();
-        }
-    };
-
-    private void requestAudioFocus() {
-        if (audioManager == null) return;
-        AudioAttributes attrs = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            AudioFocusRequest request = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                    .setAudioAttributes(attrs)
-                    .setOnAudioFocusChangeListener(focusListener)
-                    .build();
-            audioManager.requestAudioFocus(request);
-        } else {
-            audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
-        }
-    }
-
-    private void abandonAudioFocus() {
-        if (audioManager == null) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            AudioAttributes attrs = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build();
-            AudioFocusRequest request = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                    .setAudioAttributes(attrs)
-                    .setOnAudioFocusChangeListener(focusListener)
-                    .build();
-            audioManager.abandonAudioFocusRequest(request);
-        } else {
-            audioManager.abandonAudioFocus(focusListener);
-        }
-    }
-
-    private void handleUnexpectedStop() {
-        // ExoPlayer handles its own reconnection internally.
-        // If we got here, something serious happened — try again.
-        Log.i(TAG, "Handling unexpected stop, will retry");
+    private void releasePlayer() {
         if (player != null) {
-            player.stop();
-            player.clearMediaItems();
+            player.removeListener(playerListener);
+            player.release();
+            player = null;
         }
-        updateNotification("Reconnecting…", true);
-        updatePlaybackState(false);
-        handler.postDelayed(() -> {
-            if (player != null) {
-                player.setMediaItem(MediaItem.fromUri(Uri.parse(getString(R.string.radio_url))));
-                player.prepare();
-                player.setPlayWhenReady(true);
-            } else {
-                startPlayback();
-            }
-        }, 1000);
     }
 
-    // ─── Metadata ─────────────────────────────────────────────────────────
-
-    private void updateMetadata(String metadata) {
-        if (isGenericMetadata(metadata)) {
-            Log.i(TAG, "Ignoring generic stream metadata: " + metadata);
-            return;
-        }
-        currentMetadata = metadata;
-        Log.i(TAG, "Stream metadata: " + metadata);
-        broadcastMetadata(metadata);
-        updateNotification(metadata, true);
+    /** Retry with backoff (2s, 4s, 8s ... 30s) so a dead network doesn't drain the battery. */
+    private void scheduleReconnect() {
+        if (player == null || stopping) return;
+        setState(STATE_RECONNECTING);
+        handler.removeCallbacks(reconnectRunnable);
+        handler.postDelayed(reconnectRunnable, retryDelayMs);
+        Log.i(TAG, "Retrying in " + retryDelayMs + " ms");
+        retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_MS);
     }
 
-    private void broadcastMetadata(String metadata) {
-        Intent intent = new Intent(ACTION_METADATA_UPDATE);
+    // ─── State publishing ─────────────────────────────────────────────────
+
+    private void setState(int state) {
+        if (stopping || sState == state) return;
+        sState = state;
+        publish();
+    }
+
+    private void publish() {
+        if (stopping) return;
+        updateSession();
+        broadcastState();
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        nm.notify(NOTIF_ID, buildNotification());
+    }
+
+    private void broadcastState() {
+        Intent intent = new Intent(ACTION_STATE_CHANGED);
         intent.setPackage(getPackageName());
-        intent.putExtra(EXTRA_METADATA, metadata);
         sendBroadcast(intent);
     }
 
-    private boolean isGenericMetadata(String metadata) {
-        String normalized = metadata == null ? "" : metadata.trim().toLowerCase();
-        return normalized.isEmpty()
-                || "streaming powered by multix".equals(normalized)
-                || "radio kol hashfela".equals(normalized);
-    }
-
-    private String fetchIcyMetadata() {
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(getString(R.string.radio_url));
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(8000);
-            conn.setRequestProperty("Icy-MetaData", "1");
-            conn.setRequestProperty("User-Agent", "RadioKolHashfela/1.0");
-            conn.connect();
-
-            String metaintHeader = conn.getHeaderField("icy-metaint");
-            if (metaintHeader == null) return null;
-            int metaint = Integer.parseInt(metaintHeader.trim());
-            if (metaint <= 0) return null;
-
-            InputStream input = conn.getInputStream();
-            skipFully(input, metaint);
-            int metadataBlocks = input.read();
-            if (metadataBlocks <= 0) return null;
-
-            int metadataLength = metadataBlocks * 16;
-            ByteArrayOutputStream out = new ByteArrayOutputStream(metadataLength);
-            byte[] buffer = new byte[metadataLength];
-            int total = 0;
-            while (total < metadataLength) {
-                int read = input.read(buffer, total, metadataLength - total);
-                if (read < 0) break;
-                total += read;
-            }
-            out.write(buffer, 0, total);
-            return parseStreamTitle(out.toString("UTF-8"));
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to read stream metadata", e);
-            return null;
-        } finally {
-            if (conn != null) conn.disconnect();
+    private String statusText() {
+        switch (sState) {
+            case STATE_PLAYING:
+                return sTrack.isEmpty() ? getString(R.string.status_live) : sTrack;
+            case STATE_PAUSED:
+                return getString(R.string.status_paused);
+            case STATE_RECONNECTING:
+                return getString(R.string.status_reconnecting);
+            case STATE_CONNECTING:
+                return getString(R.string.status_connecting);
+            default:
+                return getString(R.string.status_stopped);
         }
     }
 
-    private void skipFully(InputStream input, int bytesToSkip) throws IOException {
-        long remaining = bytesToSkip;
-        while (remaining > 0) {
-            long skipped = input.skip(remaining);
-            if (skipped <= 0) {
-                if (input.read() == -1) throw new IOException("End of stream while skipping audio");
-                skipped = 1;
-            }
-            remaining -= skipped;
-        }
-    }
-
-    private String parseStreamTitle(String metadata) {
-        String marker = "StreamTitle='";
-        int start = metadata.indexOf(marker);
-        if (start < 0) return metadata.replace("\u0000", "").trim();
-        start += marker.length();
-        int end = metadata.indexOf("';", start);
-        if (end < 0) end = metadata.length();
-        return metadata.substring(start, end).replace("\u0000", "").trim();
-    }
-
-    // ─── MediaSession ─────────────────────────────────────────────────────
+    // ─── MediaSession (lock screen, Bluetooth, headset buttons) ───────────
 
     private void createMediaSession() {
-        mediaSession = new MediaSession(this, "RadioKolHashfela");
-        mediaSession.setFlags(
-                MediaSession.FLAG_HANDLES_MEDIA_BUTTONS
-                        | MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession = new MediaSession(this, "KolHashfela");
         mediaSession.setCallback(new MediaSession.Callback() {
             @Override
             public void onPlay() {
@@ -381,89 +373,94 @@ public class RadioService extends Service {
 
             @Override
             public void onPause() {
-                stopPlaybackByUser();
+                stopPlayback();
             }
 
             @Override
             public void onStop() {
-                stopPlaybackByUser();
+                stopPlayback();
             }
         });
+        Intent open = new Intent(this, MainActivity.class);
+        mediaSession.setSessionActivity(PendingIntent.getActivity(this, 0, open, pendingFlags()));
         mediaSession.setActive(true);
-        updatePlaybackState(false);
+        updateSession();
     }
 
-    private void updatePlaybackState(boolean playing) {
+    private void updateSession() {
         if (mediaSession == null) return;
-        int state = playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED;
-        long actions = PlaybackState.ACTION_PLAY
-                | PlaybackState.ACTION_PAUSE
-                | PlaybackState.ACTION_STOP;
-        PlaybackState playbackState = new PlaybackState.Builder()
-                .setActions(actions)
-                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? 1.0f : 0f)
-                .build();
-        mediaSession.setPlaybackState(playbackState);
+        int state;
+        switch (sState) {
+            case STATE_PLAYING:
+                state = PlaybackState.STATE_PLAYING;
+                break;
+            case STATE_CONNECTING:
+            case STATE_RECONNECTING:
+                state = PlaybackState.STATE_BUFFERING;
+                break;
+            case STATE_PAUSED:
+                state = PlaybackState.STATE_PAUSED;
+                break;
+            default:
+                state = PlaybackState.STATE_STOPPED;
+        }
+        mediaSession.setPlaybackState(new PlaybackState.Builder()
+                .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE
+                        | PlaybackState.ACTION_PLAY_PAUSE | PlaybackState.ACTION_STOP)
+                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN,
+                        state == PlaybackState.STATE_PLAYING ? 1f : 0f)
+                .build());
+
+        String stationTitle = getString(R.string.notif_title);
+        mediaSession.setMetadata(new MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE,
+                        sTrack.isEmpty() ? stationTitle : sTrack)
+                .putString(MediaMetadata.METADATA_KEY_ARTIST,
+                        sTrack.isEmpty() ? statusText() : stationTitle)
+                .putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, logo)
+                .putBitmap(MediaMetadata.METADATA_KEY_ART, logo)
+                .build());
     }
 
     // ─── Notification ─────────────────────────────────────────────────────
 
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "Radio Player",
-                NotificationManager.IMPORTANCE_LOW
-        );
-        channel.setDescription("Radio playback notification");
+                CHANNEL_ID, getString(R.string.channel_name), NotificationManager.IMPORTANCE_LOW);
         channel.setShowBadge(false);
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(channel);
+        getSystemService(NotificationManager.class).createNotificationChannel(channel);
     }
 
-    private Notification buildNotification(String status, boolean showStopAction) {
-        Intent openIntent = new Intent(this, MainActivity.class);
-        PendingIntent openPendingIntent = PendingIntent.getActivity(
-                this, 0, openIntent, pendingIntentFlags());
+    private Notification buildNotification() {
+        PendingIntent open = PendingIntent.getActivity(
+                this, 0, new Intent(this, MainActivity.class), pendingFlags());
+        PendingIntent stop = PendingIntent.getService(
+                this, 1, new Intent(this, RadioService.class).setAction(ACTION_STOP), pendingFlags());
 
-        Intent actionIntent = new Intent(this, RadioService.class);
-        actionIntent.setAction(showStopAction ? ACTION_STOP : ACTION_PLAY);
-        PendingIntent actionPendingIntent = PendingIntent.getService(
-                this, showStopAction ? 1 : 2, actionIntent, pendingIntentFlags());
-
-        String actionLabel = showStopAction ? getString(R.string.stop) : getString(R.string.play);
-        int actionIcon = showStopAction
-                ? android.R.drawable.ic_media_pause
-                : android.R.drawable.ic_media_play;
-
-        Notification.MediaStyle mediaStyle = new Notification.MediaStyle()
-                .setShowActionsInCompactView(0);
-        if (mediaSession != null) {
-            mediaStyle.setMediaSession(mediaSession.getSessionToken());
-        }
+        Notification.MediaStyle style = new Notification.MediaStyle()
+                .setShowActionsInCompactView(0)
+                .setMediaSession(mediaSession.getSessionToken());
 
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Kol Hashfela 103.6FM")
-                .setContentText(status)
-                .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentIntent(openPendingIntent)
-                .addAction(actionIcon, actionLabel, actionPendingIntent)
-                .setStyle(mediaStyle)
+                .setContentTitle(getString(R.string.notif_title))
+                .setContentText(statusText())
+                .setSmallIcon(R.drawable.ic_stat_radio)
+                .setLargeIcon(logo)
+                .setColor(getColor(R.color.brand_orange))
+                .setContentIntent(open)
+                .addAction(new Notification.Action.Builder(
+                        android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_pause),
+                        getString(R.string.stop), stop).build())
+                .setStyle(style)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setCategory(Notification.CATEGORY_TRANSPORT)
                 .build();
     }
 
-    private int pendingIntentFlags() {
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= PendingIntent.FLAG_IMMUTABLE;
-        }
-        return flags;
-    }
-
-    private void updateNotification(String status, boolean showStopAction) {
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.notify(NOTIF_ID, buildNotification(status, showStopAction));
+    private int pendingFlags() {
+        return PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
     }
 }

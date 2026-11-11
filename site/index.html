@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>קול השפלה 103.6FM - אפליקציה לאנדרואיד</title>
+<meta name="description" content="אפליקציה פשוטה להאזנה לרדיו קול השפלה 103.6FM מרחובות. לחיצה אחת ומאזינים. בלי פרסומות, בלי מעקב.">
+<link rel="icon" type="image/png" href="favicon.png">
+
+<!-- Facebook / WhatsApp link preview -->
+<meta property="og:type" content="website">
+<meta property="og:locale" content="he_IL">
+<meta property="og:url" content="https://brchn6.github.io/radio-kol-hashfela/">
+<meta property="og:title" content="קול השפלה 103.6FM - האפליקציה">
+<meta property="og:description" content="לחיצה אחת ומאזינים לרדיו קול השפלה. בלי פרסומות, בלי מעקב, חינם.">
+<meta property="og:image" content="https://brchn6.github.io/radio-kol-hashfela/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+  :root {
+    --orange: #dd6a00;
+    --orange-dark: #b85500;
+    --bg: #fff8f1;
+    --card: #ffffff;
+    --text: #2a1a0c;
+    --muted: #7a6656;
+    --line: #f0dcc8;
+    --chip: #fdeedd;
+  }
+  :root[data-theme="dark"] {
+    --bg: #17120e;
+    --card: #231b14;
+    --text: #f6ece2;
+    --muted: #b8a596;
+    --line: #3a2d22;
+    --chip: #33241a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17120e;
+      --card: #231b14;
+      --text: #f6ece2;
+      --muted: #b8a596;
+      --line: #3a2d22;
+      --chip: #33241a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Rubik", "Assistant", "Segoe UI", Arial, sans-serif;
+    line-height: 1.55;
+  }
+  .hero {
+    background: linear-gradient(180deg, var(--orange), var(--orange-dark));
+    color: #fff;
+    text-align: center;
+    padding: 28px 16px 40px;
+    position: relative;
+  }
+  .theme {
+    position: absolute; top: 12px; left: 12px;
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 0; background: rgba(255,255,255,.2); color: #fff;
+    font-size: 20px; cursor: pointer;
+  }
+  .logo {
+    width: 132px; height: 132px; border-radius: 28px;
+    background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    display: block; margin: 8px auto 18px;
+  }
+  h1 { margin: 0; font-size: 30px; }
+  .tag { margin: 6px 0 22px; font-size: 17px; opacity: .92; }
+  .download {
+    display: inline-block; background: #fff; color: var(--orange-dark);
+    font-weight: 700; font-size: 20px; text-decoration: none;
+    padding: 16px 34px; border-radius: 40px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.22);
+  }
+  .download:active { transform: scale(.98); }
+  .meta { margin-top: 12px; font-size: 14px; opacity: .85; }
+  main { max-width: 560px; margin: 0 auto; padding: 8px 16px 40px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 22px 0 6px; }
+  .chip {
+    background: var(--chip); color: var(--text);
+    border-radius: 20px; padding: 6px 14px; font-size: 14px; font-weight: 600;
+  }
+  section {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 18px 18px 8px; margin-top: 18px;
+  }
+  h2 { font-size: 19px; margin: 0 0 10px; }
+  ol { padding-inline-start: 22px; margin: 0 0 10px; }
+  li { margin-bottom: 10px; }
+  .hint { color: var(--muted); font-size: 14px; }
+  a { color: var(--orange); }
+  .shot { display: block; width: 240px; max-width: 70%; margin: 6px auto 14px; border-radius: 22px; box-shadow: 0 8px 26px rgba(0,0,0,.18); }
+  details { margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  code { direction: ltr; unicode-bidi: embed; font-size: 12px; word-break: break-all; color: var(--muted); }
+  footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 26px; }
+</style>
+<script>
+  // Theme: system default, remembered choice wins. Storage may be blocked.
+  (function () {
+    try {
+      var saved = localStorage.getItem("kolhashfela-theme");
+      if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<header class="hero">
+  <button class="theme" id="theme" aria-label="מצב בהיר/כהה">◐</button>
+  <img class="logo" src="logo.png" alt="קול השפלה 103.6FM">
+  <h1>קול השפלה 103.6FM</h1>
+  <p class="tag">לחיצה אחת ומאזינים. בלי פרסומות, בלי מעקב.</p>
+  <a class="download" href="https://github.com/brchn6/radio-kol-hashfela/releases/latest/download/KolHashfela.apk">⬇ הורדה לאנדרואיד</a>
+  <div class="meta">חינם · 2.2MB · אנדרואיד 8 ומעלה</div>
+</header>
+
+<main>
+  <div class="chips">
+    <span class="chip">▶ מתחיל לנגן מיד</span>
+    <span class="chip">🔒 ממשיך כשהמסך כבוי</span>
+    <span class="chip">📞 עוצר לשיחה וחוזר</span>
+    <span class="chip">🚫 בלי פרסומות</span>
+  </div>
+
+  <img class="shot" src="app.png" alt="צילום מסך של האפליקציה" width="480" height="949">
+
+  <section>
+    <h2>איך מתקינים</h2>
+    <ol>
+      <li>לוחצים על <b>הורדה לאנדרואיד</b>.<br>
+        <span class="hint">פתחתם מתוך פייסבוק וההורדה לא מתחילה? לחצו על ⋮ למעלה ובחרו "פתיחה בדפדפן" (Chrome).</span><br>
+        <span class="hint">אם Chrome כותב שהקובץ "עלול להזיק", לוחצים <b>הורדה בכל זאת</b>.</span></li>
+      <li>פותחים את הקובץ <b>KolHashfela.apk</b> שירד.<br>
+        <span class="hint">אם הטלפון שואל, מאשרים "התקנת אפליקציות לא מוכרות" עבור הדפדפן.</span></li>
+      <li>אם מופיעה אזהרה של Play Protect: לוחצים <b>פרטים נוספים</b> ואז <b>התקנה בכל זאת</b>.<br>
+        <span class="hint">זה קורה לכל אפליקציה שלא מגיעה מחנות Play.</span></li>
+      <li>פותחים את <b>קול השפלה</b> והרדיו מתחיל לנגן.</li>
+    </ol>
+    <p class="hint">התקנתם פעם גרסה ישנה (Radio Kol Hashfela)? אפשר למחוק אותה, החדשה מחליפה אותה.</p>
+  </section>
+
+  <section>
+    <h2>למה זה בטוח</h2>
+    <ol>
+      <li>האפליקציה עושה דבר אחד: מנגנת את השידור החי של התחנה.</li>
+      <li>אין פרסומות, אין מעקב, אין הרשמה. היא לא מבקשת גישה למצלמה, למיקרופון, לאנשי הקשר או למיקום.</li>
+      <li>כל הקוד פתוח לעיון ב-<a href="https://github.com/brchn6/radio-kol-hashfela">GitHub</a>.</li>
+    </ol>
+    <details>
+      <summary>למתקדמים: טביעת האצבע של חתימת האפליקציה</summary>
+      <p class="hint">כל גרסה רשמית של האפליקציה הזאת חתומה במפתח הזה (SHA-256):</p>
+      <code>4A:83:6E:06:2F:5E:5E:F9:1F:CF:43:FA:0A:F9:A6:E3:1F:2E:53:29:BC:0E:99:73:86:DC:81:2E:30:9E:4B:3F</code>
+    </details>
+  </section>
+
+  <section>
+    <h2>יש לכם אייפון?</h2>
+    <p>לתחנה יש אפליקציה משלה ב-<a href="https://apps.apple.com/app/id1255901182">App Store</a>.</p>
+  </section>
+
+  <footer>
+    אפליקציה לא רשמית, נבנתה באהבה ע"י מאזין.<br>
+    אין קשר רשמי לרדיו קול השפלה. האתר של התחנה: <a href="https://www.1036kh.com/">1036kh.com</a>
+  </footer>
+</main>
+
+<script>
+  document.getElementById("theme").addEventListener("click", function () {
+    var root = document.documentElement;
+    var current = root.getAttribute("data-theme")
+      || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    var next = current === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("kolhashfela-theme", next); } catch (e) {}
+  });
+</script>
+</body>
+</html>

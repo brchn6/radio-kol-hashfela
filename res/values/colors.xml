@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Station orange, matched to the original 103.6FM app -->
+    <color name="brand_orange">#DD6A00</color>
+    <color name="brand_orange_dark">#B85500</color>
+    <color name="brand_blue">#00529B</color>
+    <color name="icon_background">#FFFFFF</color>
+</resources>

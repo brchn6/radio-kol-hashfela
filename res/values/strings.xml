@@ -1,11 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Radio Kol Hashfela</string>
+    <string name="app_name">קול השפלה</string>
     <string name="radio_url">https://radio.streamgates.net/stream/1036kh</string>
-    <string name="radio_name">Radio Kol Hashfela</string>
-    <string name="play">Play</string>
-    <string name="stop">Stop</string>
-    <string name="whatsapp_button">WhatsApp 103.6FM</string>
+    <string name="radio_name">קול השפלה</string>
+    <string name="radio_subtitle">103.6FM · רחובות</string>
+    <string name="notif_title">קול השפלה 103.6FM</string>
+
+    <string name="status_live">בשידור חי</string>
+    <string name="status_connecting">מתחבר…</string>
+    <string name="status_reconnecting">החיבור נקטע, מתחבר מחדש…</string>
+    <string name="status_paused">מושהה</string>
+    <string name="status_stopped">לחצו על נגן כדי להאזין</string>
+
+    <string name="play">נגן</string>
+    <string name="stop">עצור</string>
+    <string name="channel_name">נגן הרדיו</string>
+
+    <string name="whatsapp_button">שלחו וואטסאפ לתחנה</string>
     <string name="whatsapp_phone">972585851036</string>
     <string name="whatsapp_message">שיר מעולה, אתם הכי טובים!</string>
+    <string name="link_facebook">פייסבוק</string>
+    <string name="link_instagram">אינסטגרם</string>
+    <string name="link_youtube">יוטיוב</string>
+    <string name="link_website">האתר</string>
+    <string name="url_facebook">https://www.facebook.com/1036kh</string>
+    <string name="url_instagram">https://www.instagram.com/1036kh/</string>
+    <string name="url_youtube">https://www.youtube.com/channel/UCsayw00nuP5AGE4AdQyHYtw</string>
+    <string name="url_website">https://www.1036kh.com/</string>
+    <string name="no_app_for_link">לא נמצאה אפליקציה לפתיחת הקישור</string>
+
+    <string name="footer">אפליקציה לא רשמית, נבנתה באהבה ע״י מאזין · גרסה %1$s</string>
 </resources>
