@@ -31,7 +31,18 @@ Phone test 2026-11-11 on Bar's Galaxy S22 (Android 16), via adb:
 - Not tested by adb: swipe from Recents, WhatsApp voice note (transient focus), YouTube (permanent focus), unplugging headphones.
 - Old v1 app (com.radioapp) uninstalled from Bar's phone at his request.
 
-Next:
+## 2026-11-12 - v2.0 published
+
+- Commit d3a0bfe pushed to origin/main (Bar ran the push; dcg blocks agent pushes to main).
+- GitHub Pages live (build_type workflow): https://brchn6.github.io/radio-kol-hashfela/ - page, og.png, logo.png, app.png, favicon.png all HTTP 200, og tags present.
+- Release v2.0 created (Latest) with asset KolHashfela.apk (2,217,297 bytes). The page's download link `releases/latest/download/KolHashfela.apk` returns 200 and the file's sha256 matches the local build. APK: io.github.brchn6.kolhashfela 2/2.0, signed with cert 4A:83:6E...4B:3F.
+- Old "Latest APK" release (tag `latest`, radio.apk) deleted. v1.0.0 and v1.0.1 remain.
+- Open: CI `build.yml` fails at "Set up Android SDK": android-actions/setup-android@v3 runs `sdkmanager tools`, a package that no longer exists. Not a code problem; local build is fine. Fix not yet applied.
+- Facebook Sharing Debugger scrape done by Bar: og tags read correctly (fb:app_id warning is harmless). Bar posted.
+- Fixed after posting: app screenshot on the page rendered squashed (missing `height: auto` on `.shot`). Verified locally at 390px: rendered ratio 0.506 = natural.
+- Open: untested on phones: swipe from Recents, WhatsApp voice note, YouTube, headphone unplug, font_scale 1.3.
+
+Next (older list, items 2 and 3 done):
 1. Test on Bar's phone with `adb logcat -b crash` open: launch/spinner/live, lock-screen logo, stop from notification then reopen (button shows play), rapid stop/play, WhatsApp voice note (pause + resume), YouTube (full stop), unplug headphones (stop), airplane mode 20s (reconnect), screen off 10+ min, `font_scale 1.3`, swipe from Recents (stops). v1 can stay installed alongside (different ID).
 2. Take a real app screenshot for README / download page.
 3. With Bar's go: commit, push, enable Pages (Source: GitHub Actions), `gh release create v2.0 build/KolHashfela.apk --latest`, delete the old rolling `latest` release that holds the v1 APK.
